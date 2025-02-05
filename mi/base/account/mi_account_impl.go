@@ -204,7 +204,7 @@ func (m *MIAccount) ServiceLogin(ctx context.Context) (*MiAccountResponse, error
 		return &accountResponse, err
 	}
 
-	internal_log.GetLogger().Infof(ctx, "response: %s", string(resp))
+	internal_log.GetLogger().Debugf(ctx, "response: %s", string(resp))
 	matchs := common.MiAccountResultRegexp.FindStringSubmatch(string(resp))
 	if len(matchs) != 2 {
 		internal_log.GetLogger().Errorf(ctx, "解包失败 => %s", string(resp))
@@ -272,7 +272,7 @@ func (m *MIAccount) GetLoginAccount(ctx context.Context) (*MIAccount, error) {
 		return nil, err
 	}
 
-	internal_log.GetLogger().Infof(ctx, "resp.StatusCode = %d,response: %s", resp.StatusCode, string(respBody))
+	internal_log.GetLogger().Debugf(ctx, "resp.StatusCode = %d,response: %s", resp.StatusCode, string(respBody))
 
 	matchs := common.MiAccountResultRegexp.FindStringSubmatch(string(respBody))
 	if len(matchs) != 2 {

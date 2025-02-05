@@ -242,8 +242,8 @@ func (m *MinaAccount) GetMiDeviceList(ctx context.Context) ([]*MinaDevice, error
 
 	m.deviceList = r.Data
 
-	d, _ := json.MarshalIndent(r, " ", "    ")
-	internal_log.GetLogger().Debugf(ctx, "devicelist => %s", string(d))
+	d, _ := json.MarshalIndent(r.Data, " ", "    ")
+	internal_log.GetLogger().Infof(ctx, "devicelist => %s", string(d))
 
 	return r.Data, nil
 }
@@ -275,7 +275,6 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 	data.Add("limit", strconv.Itoa(limit))
 	data.Add("timestamp", fmt.Sprintf("%d", timestamp))
 	data.Add("requestId", uuid.NewString())
-	data.Add("source", "dialogu")
 	data.Add("hardware", hardware)
 
 	requestUrl := fmt.Sprintf("%s?%s", common.MinaConversationUrl, data.Encode())
@@ -286,7 +285,6 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
-	req.Header.Set("Referer", "https://userprofile.mina.mi.com/dialogue-note/index.html")
 	req.AddCookie(&http.Cookie{Name: "userId", Value: strconv.Itoa(int(m.UserId))})
 	req.AddCookie(&http.Cookie{Name: "serviceToken", Value: m.ServiceToken})
 	req.AddCookie(&http.Cookie{Name: "deviceId", Value: deviceId})
@@ -301,8 +299,6 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 		internal_log.GetLogger().Errorf(ctx, "解包失败: %s", err)
 		return nil, err
 	}
-
-	internal_log.GetLogger().Infof(ctx, string(respBody))
 
 	var r common.Response[string]
 	err = json.Unmarshal(respBody, &r)
@@ -321,6 +317,7 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 
 	d, _ := json.MarshalIndent(conversation, " ", "	")
 	internal_log.GetLogger().Debugf(ctx, "conversations: %s \n", string(d))
+
 	return conversation, nil
 }
 

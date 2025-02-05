@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/looplab/fsm v1.0.2
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
