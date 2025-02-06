@@ -1,8 +1,15 @@
 package fsm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"migpt-go/doc"
+	internal "migpt-go/internal/log"
+	"migpt-go/mi/base/mina"
+	"migpt-go/mi/base/miot"
+	"text/template"
+	"time"
 
 	"github.com/looplab/fsm"
 )
@@ -27,21 +34,27 @@ const (
 
 // XiaoAiFSM 小爱同学状态机
 type XiaoAiFSM struct {
-	FSM *fsm.FSM
-	// 可以在此添加其他上下文信息
+	FSM  *fsm.FSM
+	ctx  context.Context
+	mina mina.IMina
+	miot miot.IMiot
 }
 
 func NewXiaoAi() *XiaoAiFSM {
-	x := &XiaoAiFSM{}
+	ctx := context.TODO()
+	x := &XiaoAiFSM{
+		mina: mina.InitMina(ctx),
+		miot: miot.InitMiot(ctx),
+	}
 
 	x.FSM = fsm.NewFSM(
 		StateIdle,
 		fsm.Events{
 			// 格式：事件名称 -> 源状态 -> 目标状态
-			{Name: EventWakeUp, Src: []string{StateIdle, StateSleeping}, Dst: StateListening},
+			{Name: EventWakeUp, Src: []string{StateIdle}, Dst: StateListening},
 			{Name: EventVoiceDetected, Src: []string{StateListening}, Dst: StateProcessing},
 			{Name: EventProcessComplete, Src: []string{StateProcessing}, Dst: StateSpeaking},
-			{Name: EventResponseComplete, Src: []string{StateSpeaking}, Dst: StateIdle},
+			{Name: EventResponseComplete, Src: []string{StateSpeaking}, Dst: StateListening},
 			{Name: EventTimeout, Src: []string{StateIdle}, Dst: StateSleeping},
 		},
 		fsm.Callbacks{
@@ -71,18 +84,54 @@ func (x *XiaoAiFSM) enterState(e *fsm.Event) {
 
 // 各个状态的具体处理逻辑
 func (x *XiaoAiFSM) onEnterIdle() {
-	fmt.Println("进入待机状态，等待唤醒...")
 	// 启动空闲计时器（比如30秒无操作进入睡眠）
 }
 
 func (x *XiaoAiFSM) onEnterListening() {
-	fmt.Println("进入聆听状态，开始录音...")
-	// 启动语音检测逻辑
+	device_list, err := x.mina.GetMiDeviceList(x.ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		for _, device := range device_list {
+			if device.Name == "小爱音箱mini" {
+				conv, err := x.mina.GetUserConversations(x.ctx, 10, time.Now().Unix(), device.Hardware, device.DeviceID)
+				if err != nil {
+					internal.GetLogger().Warnf(x.ctx, "err:%v", err)
+					continue
+				}
+
+				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv)
+
+				msg := "测试"
+				x.FSM.Event(x.ctx, EventVoiceDetected, msg)
+				return
+			}
+		}
+	}
 }
 
 func (x *XiaoAiFSM) onEnterProcessing() {
-	fmt.Println("进入处理状态，分析用户请求...")
+	internal.GetLogger().Infof(x.ctx, "进入处理状态，分析用户请求...")
 	// 调用自然语言处理模块
+	t, err := template.New("标准化提示词模板").Parse(doc.DefaultSystemTemplate)
+	if err != nil {
+		panic(err)
+	}
+	var buf bytes.Buffer
+	data := map[string]string{}
+	err = t.Execute(&buf, data)
+	if err != nil {
+		internal.GetLogger().Warnf(x.ctx, "build prompt failed => %s", err)
+		return
+	}
+
+	//TODO调用 AI 接口
+
 }
 
 func (x *XiaoAiFSM) onEnterSpeaking() {

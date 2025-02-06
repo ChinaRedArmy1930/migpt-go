@@ -1,6 +1,8 @@
 package common
 
-import "regexp"
+import (
+	"regexp"
+)
 
 const (
 	MiServiceMiIot = "miiot"
