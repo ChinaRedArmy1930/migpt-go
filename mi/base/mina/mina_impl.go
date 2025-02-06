@@ -16,8 +16,6 @@ import (
 
 	"migpt-go/internal/common"
 	internal_log "migpt-go/internal/log"
-
-	"github.com/google/uuid"
 )
 
 type MinaAccount struct {
@@ -143,11 +141,11 @@ func (llm AnswerAudio) Allow() {}
 
 // Record 结构体，表示 records 数组中的每个元素
 type Record struct {
-	BitSet    [5]int64 `json:"bitSet,omitempty"`
-	Answers   []Answer `json:"answers,omitempty"`
-	Time      int64    `json:"time,omitempty"`
-	Query     string   `json:"query,omitempty"`
-	RequestID string   `json:"requestId,omitempty"`
+	BitSet    [5]int64    `json:"bitSet,omitempty"`
+	Answers   []AnswerTTS `json:"answers,omitempty"`
+	Time      int64       `json:"time,omitempty"`
+	Query     string      `json:"query,omitempty"`
+	RequestID string      `json:"requestId,omitempty"`
 }
 
 // MiConversations 结构体
@@ -274,10 +272,11 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 	data := url.Values{}
 	data.Add("limit", strconv.Itoa(limit))
 	data.Add("timestamp", fmt.Sprintf("%d", timestamp))
-	data.Add("requestId", uuid.NewString())
+	//data.Add("requestId", uuid.NewString())
 	data.Add("hardware", hardware)
-
+	data.Add("source", "dialogu")
 	requestUrl := fmt.Sprintf("%s?%s", common.MinaConversationUrl, data.Encode())
+	fmt.Println(requestUrl)
 	req, err := http.NewRequest("GET", requestUrl, nil)
 	if err != nil {
 		internal_log.GetLogger().Errorf(ctx, "Error creating request: %s", err)
@@ -299,7 +298,7 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 		internal_log.GetLogger().Errorf(ctx, "解包失败: %s", err)
 		return nil, err
 	}
-
+	internal_log.GetLogger().Debugf(ctx, "respBody: %s \n", string(respBody))
 	var r common.Response[string]
 	err = json.Unmarshal(respBody, &r)
 	if err != nil {

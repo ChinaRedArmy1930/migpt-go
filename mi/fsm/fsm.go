@@ -96,21 +96,21 @@ func (x *XiaoAiFSM) onEnterListening() {
 		panic(err)
 	}
 
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(time.Second * 1)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		for _, device := range device_list {
 			if device.Name == "小爱音箱mini" {
-				conv, err := x.mina.GetUserConversations(x.ctx, 10, time.Now().Unix(), device.Hardware, device.DeviceID)
+				conv, err := x.mina.GetUserConversations(x.ctx, 1, time.Now().UnixNano(), device.Hardware, device.DeviceID)
 				if err != nil {
 					internal.GetLogger().Warnf(x.ctx, "err:%v", err)
 					continue
 				}
 
-				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv)
+				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv.Records[0].Query)
 
-				msg := "测试"
+				msg := conv.Records[0].Query
 				x.FSM.Event(x.ctx, EventVoiceDetected, msg)
 				return
 			}
