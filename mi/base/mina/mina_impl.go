@@ -243,7 +243,7 @@ func (m *MinaAccount) GetMiDeviceList(ctx context.Context) ([]*MinaDevice, error
 	m.deviceList = r.Data
 
 	d, _ := json.MarshalIndent(r.Data, " ", "    ")
-	internal_log.GetLogger().Infof(ctx, "devicelist => %s", string(d))
+	internal_log.GetLogger().Debugf(ctx, "devicelist => %s", string(d))
 
 	return r.Data, nil
 }

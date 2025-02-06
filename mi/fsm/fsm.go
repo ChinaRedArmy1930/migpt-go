@@ -8,10 +8,12 @@ import (
 	internal "migpt-go/internal/log"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
+	"os"
 	"text/template"
 	"time"
 
 	"github.com/looplab/fsm"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 // 状态定义
@@ -45,6 +47,7 @@ func NewXiaoAi() *XiaoAiFSM {
 	x := &XiaoAiFSM{
 		mina: mina.InitMina(ctx),
 		miot: miot.InitMiot(ctx),
+		ctx:  ctx,
 	}
 
 	x.FSM = fsm.NewFSM(
@@ -130,8 +133,23 @@ func (x *XiaoAiFSM) onEnterProcessing() {
 		return
 	}
 
-	//TODO调用 AI 接口
+	llm, err := openai.New(openai.WithBaseURL("https://api.siliconflow.cn/v1"),
+		openai.WithModel("deepseek-ai/DeepSeek-V3"),
+		openai.WithToken(os.Getenv("apikey")))
+	if err != nil {
+		internal.GetLogger().Warnf(x.ctx, "new openai failed => %s", err)
+		return
+	}
 
+	result, err := llm.Call(x.ctx, buf.String())
+	if err != nil {
+		internal.GetLogger().Warnf(x.ctx, "call failed => %s", err)
+		return
+	}
+
+	fmt.Printf("result => %s", result)
+
+	//调用接口输出
 }
 
 func (x *XiaoAiFSM) onEnterSpeaking() {
