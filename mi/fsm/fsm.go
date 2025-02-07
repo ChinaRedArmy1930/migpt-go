@@ -1,19 +1,14 @@
 package fsm
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"migpt-go/doc"
 	internal "migpt-go/internal/log"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
-	"os"
-	"text/template"
 	"time"
 
 	"github.com/looplab/fsm"
-	"github.com/tmc/langchaingo/llms/openai"
 )
 
 // 状态定义
@@ -36,18 +31,22 @@ const (
 
 // XiaoAiFSM 小爱同学状态机
 type XiaoAiFSM struct {
-	FSM  *fsm.FSM
-	ctx  context.Context
-	mina mina.IMina
-	miot miot.IMiot
+	FSM    *fsm.FSM
+	ctx    context.Context
+	mina   mina.IMina
+	miot   miot.IMiot
+	qqueue chan<- string
+	aqueue <-chan string
 }
 
-func NewXiaoAi() *XiaoAiFSM {
+func NewXiaoAi(question chan<- string, answer <-chan string) *XiaoAiFSM {
 	ctx := context.TODO()
 	x := &XiaoAiFSM{
-		mina: mina.InitMina(ctx),
-		miot: miot.InitMiot(ctx),
-		ctx:  ctx,
+		mina:   mina.InitMina(ctx),
+		miot:   miot.InitMiot(ctx),
+		ctx:    ctx,
+		qqueue: question,
+		aqueue: answer,
 	}
 
 	x.FSM = fsm.NewFSM(
@@ -111,7 +110,8 @@ func (x *XiaoAiFSM) onEnterListening() {
 				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv.Records[0].Query)
 
 				msg := conv.Records[0].Query
-				x.FSM.Event(x.ctx, EventVoiceDetected, msg)
+				x.FSM.SetMetadata("question", msg)
+				x.FSM.Event(x.ctx, EventVoiceDetected)
 				return
 			}
 		}
@@ -120,36 +120,18 @@ func (x *XiaoAiFSM) onEnterListening() {
 
 func (x *XiaoAiFSM) onEnterProcessing() {
 	internal.GetLogger().Infof(x.ctx, "进入处理状态，分析用户请求...")
-	// 调用自然语言处理模块
-	t, err := template.New("标准化提示词模板").Parse(doc.DefaultSystemTemplate)
-	if err != nil {
-		panic(err)
-	}
-	var buf bytes.Buffer
-	data := map[string]string{}
-	err = t.Execute(&buf, data)
-	if err != nil {
-		internal.GetLogger().Warnf(x.ctx, "build prompt failed => %s", err)
-		return
-	}
-
-	llm, err := openai.New(openai.WithBaseURL("https://api.siliconflow.cn/v1"),
-		openai.WithModel("deepseek-ai/DeepSeek-V3"),
-		openai.WithToken(os.Getenv("apikey")))
-	if err != nil {
-		internal.GetLogger().Warnf(x.ctx, "new openai failed => %s", err)
-		return
-	}
-
-	result, err := llm.Call(x.ctx, buf.String())
-	if err != nil {
-		internal.GetLogger().Warnf(x.ctx, "call failed => %s", err)
-		return
-	}
-
-	fmt.Printf("result => %s", result)
-
 	//调用接口输出
+	question, ok := x.FSM.Metadata("question")
+
+	if !ok {
+		//没拿到问题
+		internal.GetLogger().Errorf(x.ctx, "get question failed")
+		return
+	}
+
+	x.qqueue <- question.(string)
+	answer := <-x.aqueue
+	internal.GetLogger().Debugf(x.ctx, "get answer => %s", answer)
 }
 
 func (x *XiaoAiFSM) onEnterSpeaking() {

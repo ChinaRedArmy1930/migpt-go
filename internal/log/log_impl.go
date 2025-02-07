@@ -33,7 +33,7 @@ func GetLogger() Ilog {
 		}
 
 		log = New(writer, Config{
-			LogLevel: Info,
+			LogLevel: Debug,
 			Colorful: true,
 		})
 	})
