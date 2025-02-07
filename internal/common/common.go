@@ -1,6 +1,9 @@
 package common
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 type Response[T any] struct {
 	Code    int    `json:"code"`
@@ -16,3 +19,8 @@ type Controller interface {
 }
 
 type ControlFunc func(context.Context, ...interface{}) (string, error)
+
+type Answer struct {
+	Chunk strings.Builder
+	Over  bool
+}

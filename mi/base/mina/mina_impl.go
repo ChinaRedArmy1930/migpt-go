@@ -344,7 +344,7 @@ func (m *MinaAccount) Controller(ctx context.Context, op string, args ...interfa
 		return "", fmt.Errorf("%s must register first", op)
 	}
 
-	return m.Control(ctx, fn.(common.ControlFunc))(ctx, args)
+	return m.Control(ctx, fn.(common.ControlFunc))(ctx, args...)
 }
 
 // RegisterControl implements IMina.

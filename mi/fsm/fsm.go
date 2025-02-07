@@ -3,6 +3,7 @@ package fsm
 import (
 	"context"
 	"fmt"
+	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
@@ -36,10 +37,10 @@ type XiaoAiFSM struct {
 	mina   mina.IMina
 	miot   miot.IMiot
 	qqueue chan<- string
-	aqueue <-chan string
+	aqueue <-chan common.Answer
 }
 
-func NewXiaoAi(question chan<- string, answer <-chan string) *XiaoAiFSM {
+func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 	ctx := context.TODO()
 	x := &XiaoAiFSM{
 		mina:   mina.InitMina(ctx),
@@ -111,6 +112,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 
 				msg := conv.Records[0].Query
 				x.FSM.SetMetadata("question", msg)
+				x.FSM.SetMetadata("device_id", device.DeviceID)
 				x.FSM.Event(x.ctx, EventVoiceDetected)
 				return
 			}
@@ -130,13 +132,29 @@ func (x *XiaoAiFSM) onEnterProcessing() {
 	}
 
 	x.qqueue <- question.(string)
-	answer := <-x.aqueue
-	internal.GetLogger().Debugf(x.ctx, "get answer => %s", answer)
+	ans := ""
+	for answer := range x.aqueue {
+		if answer.Over {
+			answer.Chunk.Reset()
+			break
+		}
+		fmt.Print(answer)
+		ans += answer.Chunk.String()
+	}
+
+	x.FSM.SetMetadata("answer", ans)
+
+	x.FSM.Event(x.ctx, EventProcessComplete)
+	internal.GetLogger().Debugf(x.ctx, "get answer => %s", ans)
+
 }
 
 func (x *XiaoAiFSM) onEnterSpeaking() {
-	fmt.Println("进入回应状态，播放回答...")
+	internal.GetLogger().Infof(x.ctx, "进入回应状态，播放回答...")
 	// 调用语音合成和播放模块
+	d, _ := x.FSM.Metadata("device_id")
+	ans, _ := x.FSM.Metadata("answer")
+	x.mina.Controller(x.ctx, "play", ans.(string), "", d.(string))
 }
 
 func (x *XiaoAiFSM) onEnterSleeping() {

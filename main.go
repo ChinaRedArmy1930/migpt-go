@@ -5,11 +5,13 @@ import (
 	"context"
 	_ "embed"
 	"migpt-go/doc"
+	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
 	"migpt-go/mi/fsm"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/tmc/langchaingo/llms"
@@ -23,7 +25,7 @@ func main() {
 	ctx := context.TODO()
 
 	question := make(chan string)
-	answer := make(chan string)
+	answer := make(chan common.Answer)
 	xiaoai := fsm.NewXiaoAi(question, answer)
 	go xiaoai.FSM.Event(ctx, fsm.EventWakeUp) // 唤醒
 
@@ -34,7 +36,7 @@ func main() {
 	select {}
 }
 
-func callai(ctx context.Context, q <-chan string, a chan<- string) error {
+func callai(ctx context.Context, q <-chan string, a chan<- common.Answer) error {
 	// 调用自然语言处理模块
 	t, err := template.New("标准化提示词模板").Parse(doc.DefaultSystemTemplate)
 	if err != nil {
@@ -63,19 +65,25 @@ func callai(ctx context.Context, q <-chan string, a chan<- string) error {
 			llms.TextParts(llms.ChatMessageTypeHuman, question),
 		}
 
-		completion, err := llm.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
-			internal.GetLogger().Debugf(ctx, "result:%s", string(chunk))
+		_, err := llm.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
 			if len(chunk) == 0 {
 				return nil
 			}
-			a <- string(chunk)
+			b := strings.Builder{}
+			b.Write(chunk)
+			a <- common.Answer{
+				Chunk: b,
+				Over:  false,
+			}
 			return nil
 		}))
 		if err != nil {
+			internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
 			return err
 		}
 
-		_ = completion
+		a <- common.Answer{Over: true}
+
 	}
 
 	return nil
