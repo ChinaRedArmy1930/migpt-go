@@ -1,21 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
-	"migpt-go/doc"
 	"migpt-go/internal/common"
-	internal "migpt-go/internal/log"
 	"migpt-go/mi/fsm"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
-	"strings"
-	"text/template"
-
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/openai"
 )
 
 func main() {
@@ -30,12 +21,13 @@ func main() {
 	go xiaoai.FSM.Event(ctx, fsm.EventWakeUp) // 唤醒
 
 	go func() {
-		callai(ctx, question, answer)
+		//callai(ctx, question, answer)
 	}()
 
 	select {}
 }
 
+/*
 func callai(ctx context.Context, q <-chan string, a chan<- common.Answer) error {
 	// 调用自然语言处理模块
 	t, err := template.New("标准化提示词模板").Parse(doc.DefaultSystemTemplate)
@@ -88,3 +80,4 @@ func callai(ctx context.Context, q <-chan string, a chan<- common.Answer) error 
 
 	return nil
 }
+*/
