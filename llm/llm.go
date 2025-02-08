@@ -10,12 +10,10 @@ type Option func(*Options)
 
 // LLMProvider 核心接口，定义通用的 LLM 操作
 type LLMProvider[T any] interface {
-	// 初始化
-	Init(ctx context.Context) error
 	// 生成文本
 	Generate(ctx context.Context, prompt string, options ...Option) (string, error)
 	// 流式生成（可选）
-	StreamGenerate(ctx context.Context, prompt string, output chan<- T, over func(t T) bool, options ...Option) error
+	StreamGenerate(ctx context.Context, prompt string, output chan<- T, options ...Option) (func(t T) bool, error)
 	// 模型元数据（名称、版本等）
 	ModelInfo() ModelMeta
 	// 关闭资源（如果有）
@@ -34,15 +32,14 @@ type Options struct {
 	MaxTokens   int
 	Timeout     time.Duration
 	Stream      bool
-	// 扩展字段 ...
 }
 
 func (l *unimplementedLLMProvider) Init(ctx context.Context) error { return nil }
 func (l *unimplementedLLMProvider) Generate(ctx context.Context, prompt string, options ...Option) (string, error) {
 	return "", nil
 }
-func (l *unimplementedLLMProvider) StreamGenerate(ctx context.Context, prompt string, output chan<- any, over func(t any) bool, options ...Option) error {
-	return nil
+func (l *unimplementedLLMProvider) StreamGenerate(ctx context.Context, prompt string, output chan<- any, options ...Option) (func(t any) bool, error) {
+	return nil, nil
 }
 func (l *unimplementedLLMProvider) ModelInfo() ModelMeta { return ModelMeta{} }
 func (l *unimplementedLLMProvider) Close() error         { return nil }
