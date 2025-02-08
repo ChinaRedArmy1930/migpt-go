@@ -9,6 +9,7 @@ import (
 	"migpt-go/doc"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
+	llmtools "migpt-go/llm/tools"
 	"os"
 	"strings"
 
@@ -61,7 +62,7 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 			Over:  false,
 		}
 		return nil
-	}), llms.WithTools(tools))
+	}), llms.WithTools(llmtools.Tools))
 	if err != nil {
 		internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
 		return over, err
