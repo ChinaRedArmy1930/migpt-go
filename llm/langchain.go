@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"html/template"
+	"log"
 	"migpt-go/config"
 	"migpt-go/doc"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
+	llm "migpt-go/llm/tools"
 	llmtools "migpt-go/llm/tools"
 	"os"
 	"strings"
@@ -70,6 +73,23 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
 	if len(resp.Choices) != 0 && resp.Choices[0] != nil {
 		internal.GetLogger().Infof(l.ctx, "choice %v", resp.Choices[0].FuncCall)
+		fnName := resp.Choices[0].FuncCall.Name
+		args := []byte(resp.Choices[0].FuncCall.Arguments)
+
+		if handler := llm.GetTool(fnName); handler != nil {
+			result, err := handler(args)
+			if err != nil {
+				log.Fatalf("工具调用 %s 失败: %v", fnName, err)
+			}
+			b := strings.Builder{}
+			b.Write([]byte(result))
+			output <- common.Answer{Chunk: b}
+
+		} else {
+			b := strings.Builder{}
+			b.Write([]byte(fmt.Sprintf("未知工具调用: %s", fnName)))
+			output <- common.Answer{Chunk: b}
+		}
 	}
 	output <- common.Answer{Over: true}
 

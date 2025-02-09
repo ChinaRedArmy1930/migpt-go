@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"migpt-go/internal/common"
 	"migpt-go/llm"
 	"migpt-go/mi/fsm"
 	"net/http"
-	_ "net/http/pprof"
 	"time"
+
+	_ "migpt-go/llm/tools/gen"
+	_ "net/http/pprof"
 )
 
 func main() {
