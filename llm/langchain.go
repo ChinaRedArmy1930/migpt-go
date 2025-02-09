@@ -71,6 +71,7 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 		return over, err
 	}
 	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
+	b := strings.Builder{}
 	if len(resp.Choices) != 0 && resp.Choices[0] != nil {
 		internal.GetLogger().Infof(l.ctx, "choice %v", resp.Choices[0].FuncCall)
 		fnName := resp.Choices[0].FuncCall.Name
@@ -81,17 +82,14 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 			if err != nil {
 				log.Fatalf("工具调用 %s 失败: %v", fnName, err)
 			}
-			b := strings.Builder{}
 			b.Write([]byte(result))
-			output <- common.Answer{Chunk: b}
-
 		} else {
-			b := strings.Builder{}
-			b.Write([]byte(fmt.Sprintf("未知工具调用: %s", fnName)))
+			b.Write(fmt.Appendf(nil, "未知工具调用: %s", fnName))
 			output <- common.Answer{Chunk: b}
 		}
 	}
-	output <- common.Answer{Over: true}
+
+	output <- common.Answer{Over: true, Chunk: b}
 
 	return over, nil
 }
@@ -121,7 +119,9 @@ func NewLLM() (LLMProvider[common.Answer], error) {
 
 	llm, err := openai.New(openai.WithBaseURL(cfg.LLM.BaseUrl),
 		openai.WithModel(cfg.LLM.Model),
-		openai.WithToken(os.Getenv("apikey")))
+		openai.WithToken(os.Getenv("apikey")),
+		openai.WithResponseFormat(openai.ResponseFormatJSON),
+	)
 	if err != nil {
 		internal.GetLogger().Warnf(ctx, "new openai failed => %s", err)
 		return nil, err
