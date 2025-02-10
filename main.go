@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"migpt-go/internal/common"
+	internal "migpt-go/internal/log"
 	"migpt-go/llm"
 	"migpt-go/mi/fsm"
 	"net/http"
@@ -30,10 +31,18 @@ func main() {
 		}
 		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*100)
 		defer cancel()
-		_, err = lc.StreamGenerate(ctx, <-question, answer)
+		q := <-question
+		_, err = lc.StreamGenerate(ctx, q, answer)
 		if err != nil {
 			panic(err)
 		}
+
+		ans, err := lc.Generate(ctx, q)
+		if err != nil {
+			panic(err)
+		}
+
+		internal.GetLogger().Debugf(ctx, "ans %s", ans)
 	}()
 
 	select {}

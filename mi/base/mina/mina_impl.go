@@ -368,7 +368,6 @@ func (m *MinaAccount) requestMinaUbus(ctx context.Context, path, method, message
 	data.Add("message", message)
 
 	requestUrl := fmt.Sprintf("%s%s?%s", common.MinaApiUrl, common.MinaApiUbus, data.Encode())
-	internal_log.GetLogger().Infof(ctx, "creating request: %s", requestUrl)
 	req, err := http.NewRequest("POST", requestUrl, nil)
 	if err != nil {
 		internal_log.GetLogger().Errorf(ctx, "Error creating request: %s", err)

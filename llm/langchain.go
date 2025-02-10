@@ -15,28 +15,56 @@ import (
 	llmtools "migpt-go/llm/tools"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/cache"
+	"github.com/tmc/langchaingo/llms/cache/inmemory"
 	"github.com/tmc/langchaingo/llms/openai"
+	"github.com/tmc/langchaingo/memory"
 )
 
 type LangchainProvider struct {
-	client *openai.LLM
-	model  string
-	ctx    context.Context
-
+	client         *openai.LLM
+	model          string
+	ctx            context.Context
 	system_prompts string
-	unimplementedLLMProvider
-}
 
-// Close implements LLMProvider.
-func (l *LangchainProvider) Close() error {
-	return nil
+	unimplementedLLMProvider
 }
 
 // Generate implements LLMProvider.
 func (l *LangchainProvider) Generate(ctx context.Context, prompt string, options ...Option) (string, error) {
-	panic("unimplemented")
+	content := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, l.system_prompts),
+		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
+	}
+
+	resp, err := l.client.GenerateContent(ctx, content, llms.WithTools(llmtools.Tools))
+	if err != nil {
+		internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
+		return "", err
+	}
+	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
+
+	b := strings.Builder{}
+	if len(resp.Choices) != 0 && resp.Choices[0] != nil {
+		internal.GetLogger().Infof(l.ctx, "choice %v", resp.Choices[0].FuncCall)
+		fnName := resp.Choices[0].FuncCall.Name
+		args := []byte(resp.Choices[0].FuncCall.Arguments)
+
+		if handler := llm.GetTool(fnName); handler != nil {
+			result, err := handler(args)
+			if err != nil {
+				log.Fatalf("工具调用 %s 失败: %v", fnName, err)
+			}
+			b.Write([]byte(result))
+		} else {
+			b.Write(fmt.Appendf(nil, "未知工具调用: %s", fnName))
+		}
+	}
+
+	return b.String(), nil
 }
 
 // StreamGenerate implements LLMProvider.
@@ -65,31 +93,14 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 			Over:  false,
 		}
 		return nil
-	}), llms.WithTools(llmtools.Tools))
+	}))
 	if err != nil {
 		internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
 		return over, err
 	}
+
 	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
-	b := strings.Builder{}
-	if len(resp.Choices) != 0 && resp.Choices[0] != nil {
-		internal.GetLogger().Infof(l.ctx, "choice %v", resp.Choices[0].FuncCall)
-		fnName := resp.Choices[0].FuncCall.Name
-		args := []byte(resp.Choices[0].FuncCall.Arguments)
-
-		if handler := llm.GetTool(fnName); handler != nil {
-			result, err := handler(args)
-			if err != nil {
-				log.Fatalf("工具调用 %s 失败: %v", fnName, err)
-			}
-			b.Write([]byte(result))
-		} else {
-			b.Write(fmt.Appendf(nil, "未知工具调用: %s", fnName))
-			output <- common.Answer{Chunk: b}
-		}
-	}
-
-	output <- common.Answer{Over: true, Chunk: b}
+	output <- common.Answer{Over: true}
 
 	return over, nil
 }
@@ -126,6 +137,16 @@ func NewLLM() (LLMProvider[common.Answer], error) {
 		internal.GetLogger().Warnf(ctx, "new openai failed => %s", err)
 		return nil, err
 	}
+
+	inmem, err := inmemory.New(ctx, inmemory.WithExpiration(time.Minute))
+	if err != nil {
+		internal.GetLogger().Warnf(ctx, "new in mem failed => %s", err)
+		return nil, err
+	}
+
+	memory.NewConversationBuffer(memory.WithChatHistory())
+
+	cache.New(llm, inmem)
 
 	l.client = llm
 	l.system_prompts = buf.String()
