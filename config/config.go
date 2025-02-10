@@ -4,25 +4,36 @@ import (
 	"github.com/spf13/viper"
 )
 
+var DefaultConfig Config
+
 type LLMConfig struct {
-	LLM struct {
-		APIKey      string `mapstructure:"api_key"`
-		Model       string `mapstructure:"model"`
-		BaseUrl     string `mapstructure:"base_url"`
-		MaxTokens   int
-		Temperature float32
-	}
+	APIKey      string `mapstructure:"api_key"`
+	Model       string `mapstructure:"model"`
+	BaseUrl     string `mapstructure:"base_url"`
+	MaxTokens   int
+	Temperature float32
 }
 
-func LoadConfig(path string) (*LLMConfig, error) {
+type AiConfig struct {
+	WakeUpKeyWords []string `mapstructure:"wake_up_key_words"`
+}
+
+type Config struct {
+	LLM LLMConfig
+	Ai  AiConfig
+}
+
+func LoadConfig(path string) (*Config, error) {
 	viper.SetConfigFile(path)
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
 	}
 
-	var cfg LLMConfig
+	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+
+	DefaultConfig = cfg
 	return &cfg, nil
 }

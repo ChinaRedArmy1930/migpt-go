@@ -3,13 +3,20 @@ package fsm
 import (
 	"context"
 	"fmt"
+	"log"
+	"migpt-go/config"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
+	"os"
 	"time"
 
+	chroma_go "github.com/amikos-tech/chroma-go/types"
+	"github.com/google/uuid"
 	"github.com/looplab/fsm"
+	"github.com/tmc/langchaingo/schema"
+	"github.com/tmc/langchaingo/vectorstores/chroma"
 )
 
 // 状态定义
@@ -111,13 +118,43 @@ func (x *XiaoAiFSM) onEnterListening() {
 				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv.Records[0].Query)
 
 				msg := conv.Records[0].Query
-				x.FSM.SetMetadata("question", msg)
-				x.FSM.SetMetadata("device_id", device.DeviceID)
-				x.FSM.Event(x.ctx, EventVoiceDetected)
-				return
+
+				//判断是否需要进入Ai模式
+				if !AiMode(msg) {
+					x.FSM.SetMetadata("question", msg)
+					x.FSM.SetMetadata("device_id", device.DeviceID)
+					x.FSM.Event(x.ctx, EventVoiceDetected)
+					return
+				}
 			}
 		}
 	}
+}
+
+func AiMode(msg string) bool {
+	store, errNs := chroma.New(
+		chroma.WithChromaURL(os.Getenv("CHROMA_URL")),
+		chroma.WithOpenAIAPIKey(os.Getenv("OPENAI_API_KEY")),
+		chroma.WithDistanceFunction(chroma_go.COSINE),
+		chroma.WithNameSpace(uuid.New().String()),
+	)
+	if errNs != nil {
+		log.Fatalf("new: %v\n", errNs)
+	}
+
+	// Add documents to the vector store.
+	docs := make([]schema.Document, 0)
+	for _, v := range config.DefaultConfig.Ai.WakeUpKeyWords {
+		docs = append(docs, schema.Document{PageContent: v})
+	}
+
+	_, errAd := store.AddDocuments(context.Background(), docs)
+	if errAd != nil {
+		log.Fatalf("AddDocument: %v\n", errAd)
+	}
+
+	store.SimilaritySearch(context.Background(), msg, 1)
+	return true
 }
 
 func (x *XiaoAiFSM) onEnterProcessing() {
@@ -146,7 +183,6 @@ func (x *XiaoAiFSM) onEnterProcessing() {
 
 	x.FSM.Event(x.ctx, EventProcessComplete)
 	internal.GetLogger().Debugf(x.ctx, "get answer => %s", ans)
-
 }
 
 func (x *XiaoAiFSM) onEnterSpeaking() {
