@@ -3,7 +3,6 @@ package fsm
 import (
 	"context"
 	"fmt"
-	"log"
 	"migpt-go/config"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
@@ -12,11 +11,9 @@ import (
 	"os"
 	"time"
 
-	chroma_go "github.com/amikos-tech/chroma-go/types"
-	"github.com/google/uuid"
 	"github.com/looplab/fsm"
-	"github.com/tmc/langchaingo/schema"
-	"github.com/tmc/langchaingo/vectorstores/chroma"
+	"github.com/qdrant/go-client/qdrant"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 // 状态定义
@@ -37,14 +34,20 @@ const (
 	EventTimeout          = "timeout"
 )
 
+const (
+	QdrantWeakUpConnection = "weak_up_keyword_connection"
+)
+
 // XiaoAiFSM 小爱同学状态机
 type XiaoAiFSM struct {
-	FSM    *fsm.FSM
-	ctx    context.Context
-	mina   mina.IMina
-	miot   miot.IMiot
-	qqueue chan<- string
-	aqueue <-chan common.Answer
+	FSM          *fsm.FSM
+	ctx          context.Context
+	mina         mina.IMina
+	miot         miot.IMiot
+	qqueue       chan<- string
+	aqueue       <-chan common.Answer
+	QdrantClient *qdrant.Client
+	VectorClient *openai.LLM
 }
 
 func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
@@ -56,6 +59,66 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		qqueue: question,
 		aqueue: answer,
 	}
+
+	//sudo docker run -d  -p 6333:6333   qdrant/qdrant
+	client, err := qdrant.NewClient(&qdrant.Config{
+		Host:                   "9.134.91.245",
+		Port:                   6333,
+		SkipCompatibilityCheck: true,
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	//使用 embeddings 将文本计算成向量
+	opts := []openai.Option{
+		openai.WithBaseURL(config.DefaultConfig.LLM.BaseUrl),
+		openai.WithToken(os.Getenv("apikey")),
+		openai.WithEmbeddingModel(config.DefaultConfig.LLM.EmbeddingModel),
+	}
+
+	llm, err := openai.New(opts...)
+	if err != nil {
+		panic(err)
+	}
+
+	x.VectorClient = llm
+
+	embedings, err := llm.CreateEmbedding(ctx, config.DefaultConfig.Ai.WakeUpKeyWords)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("%#v  \n", len(embedings))
+
+	err = client.CreateCollection(context.TODO(), &qdrant.CreateCollection{
+		CollectionName: QdrantWeakUpConnection,
+		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+			Size:     1024,
+			Distance: qdrant.Distance_Cosine,
+		}),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	points := make([]*qdrant.PointStruct, 0)
+
+	for k, v := range embedings {
+		points = append(points, &qdrant.PointStruct{
+			Id:      qdrant.NewIDNum(uint64(k + 1)),
+			Vectors: qdrant.NewVectors(v...),
+		})
+	}
+
+	client.Upsert(context.TODO(), &qdrant.UpsertPoints{
+		CollectionName: QdrantWeakUpConnection,
+		Wait:           new(bool),
+		Points:         points,
+	})
+
+	x.QdrantClient = client
 
 	x.FSM = fsm.NewFSM(
 		StateIdle,
@@ -120,7 +183,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 				msg := conv.Records[0].Query
 
 				//判断是否需要进入Ai模式
-				if !AiMode(msg) {
+				if !x.AiMode(msg) {
 					x.FSM.SetMetadata("question", msg)
 					x.FSM.SetMetadata("device_id", device.DeviceID)
 					x.FSM.Event(x.ctx, EventVoiceDetected)
@@ -131,30 +194,32 @@ func (x *XiaoAiFSM) onEnterListening() {
 	}
 }
 
-func AiMode(msg string) bool {
-	store, errNs := chroma.New(
-		chroma.WithChromaURL(os.Getenv("CHROMA_URL")),
-		chroma.WithOpenAIAPIKey(os.Getenv("OPENAI_API_KEY")),
-		chroma.WithDistanceFunction(chroma_go.COSINE),
-		chroma.WithNameSpace(uuid.New().String()),
-	)
-	if errNs != nil {
-		log.Fatalf("new: %v\n", errNs)
+func (x *XiaoAiFSM) AiMode(msg string) bool {
+
+	c, _ := x.QdrantClient.ListCollections(x.ctx)
+	internal.GetLogger().Infof(x.ctx, "collection %s", c)
+
+	//将数据算成向量
+	embedding, err := x.VectorClient.CreateEmbedding(x.ctx, []string{msg})
+	if err != nil {
+		panic(err)
 	}
 
-	// Add documents to the vector store.
-	docs := make([]schema.Document, 0)
-	for _, v := range config.DefaultConfig.Ai.WakeUpKeyWords {
-		docs = append(docs, schema.Document{PageContent: v})
+	var limit = uint64(1)
+
+	search_result, err := x.QdrantClient.Query(x.ctx, &qdrant.QueryPoints{
+		CollectionName: QdrantWeakUpConnection,
+		Query:          qdrant.NewQuery(embedding[0]...),
+		Limit:          &limit,
+	})
+
+	if err != nil {
+		panic(err)
 	}
 
-	_, errAd := store.AddDocuments(context.Background(), docs)
-	if errAd != nil {
-		log.Fatalf("AddDocument: %v\n", errAd)
-	}
+	internal.GetLogger().Infof(x.ctx, "result => %#v", search_result[0])
+	return search_result[0].Score > 0.8
 
-	store.SimilaritySearch(context.Background(), msg, 1)
-	return true
 }
 
 func (x *XiaoAiFSM) onEnterProcessing() {

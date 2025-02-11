@@ -4,14 +4,20 @@ import (
 	"github.com/spf13/viper"
 )
 
-var DefaultConfig Config
+var DefaultConfig *Config
+
+func init() {
+	DefaultConfig, _ = LoadConfig("config.yaml")
+}
 
 type LLMConfig struct {
-	APIKey      string `mapstructure:"api_key"`
-	Model       string `mapstructure:"model"`
-	BaseUrl     string `mapstructure:"base_url"`
-	MaxTokens   int
-	Temperature float32
+	APIKey         string `mapstructure:"api_key"`
+	Model          string `mapstructure:"model"`
+	BaseUrl        string `mapstructure:"base_url"`
+	EmbeddingUrl   string `mapstructure:"embedding_url"`
+	EmbeddingModel string `mapstructure:"embedding_model"`
+	MaxTokens      int
+	Temperature    float32
 }
 
 type AiConfig struct {
@@ -34,6 +40,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	DefaultConfig = cfg
+	DefaultConfig = &cfg
 	return &cfg, nil
 }

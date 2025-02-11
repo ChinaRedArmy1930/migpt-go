@@ -1,3 +1,7 @@
 LLM:
   model: "deepseek-ai/DeepSeek-V3"
   base_url: "https://api.siliconflow.cn/v1"
+  embedding_model: "BAAI/bge-large-zh-v1.5"
+
+Ai:
+  wake_up_key_words: ["召唤AI", "使用AI", "使用deepseek"]

@@ -21,7 +21,6 @@ import (
 	"github.com/tmc/langchaingo/llms/cache"
 	"github.com/tmc/langchaingo/llms/cache/inmemory"
 	"github.com/tmc/langchaingo/llms/openai"
-	"github.com/tmc/langchaingo/memory"
 )
 
 type LangchainProvider struct {
@@ -144,7 +143,7 @@ func NewLLM() (LLMProvider[common.Answer], error) {
 		return nil, err
 	}
 
-	memory.NewConversationBuffer(memory.WithChatHistory())
+	//memory.NewConversationBuffer(memory.WithChatHistory())
 
 	cache.New(llm, inmem)
 
