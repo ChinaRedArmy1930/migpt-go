@@ -4,4 +4,4 @@ LLM:
   embedding_model: "BAAI/bge-large-zh-v1.5"
 
 Ai:
-  wake_up_key_words: ["召唤AI", "使用AI", "使用deepseek"]
+  wake_up_key_words: ["召唤AI", "使用AI", "使用deepseek", "现在几点了"]

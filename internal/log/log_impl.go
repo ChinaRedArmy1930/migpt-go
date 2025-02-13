@@ -19,9 +19,21 @@ var log Ilog
 const newline = "\n"
 const suffix = "%s, "
 
+type lockedWriter struct {
+	sync.Mutex
+	writer io.Writer
+}
+
+func (w *lockedWriter) Write(p []byte) (n int, err error) {
+	w.Lock()
+	defer w.Unlock()
+	return w.writer.Write(p)
+}
+
 func GetLogger() Ilog {
 	f := sync.OnceFunc(func() {
-		writer := zapcore.AddSync(&lumberjack.Logger{
+		var writer io.Writer
+		writer = zapcore.AddSync(&lumberjack.Logger{
 			Filename:   "logs/app.log",
 			MaxSize:    100, // MB
 			MaxBackups: 3,
@@ -29,7 +41,7 @@ func GetLogger() Ilog {
 		})
 
 		if os.Getenv("stdout_log") == "true" {
-			writer = zapcore.AddSync(os.Stdout)
+			writer = zapcore.Lock(zapcore.AddSync(&lockedWriter{writer: os.Stdout}))
 		}
 
 		log = New(writer, Config{

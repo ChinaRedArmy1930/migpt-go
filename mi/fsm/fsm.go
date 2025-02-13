@@ -1,18 +1,21 @@
 package fsm
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
 	"log"
 	"migpt-go/config"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
+	"migpt-go/internal/status"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
 	"os"
 	"time"
 
 	"github.com/looplab/fsm"
+
 	"github.com/qdrant/go-client/qdrant"
 	qdrant_client "github.com/qdrant/go-client/qdrant"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -44,24 +47,28 @@ const (
 
 // XiaoAiFSM 小爱同学状态机
 type XiaoAiFSM struct {
-	FSM          *fsm.FSM
-	ctx          context.Context
-	mina         mina.IMina
-	miot         miot.IMiot
-	qqueue       chan<- string
-	aqueue       <-chan common.Answer
-	QdrantClient *qdrant_client.Client
-	VectorClient *openai.LLM
+	FSM              *fsm.FSM
+	ctx              context.Context
+	mina             mina.IMina
+	miot             miot.IMiot
+	qqueue           chan<- string
+	aqueue           <-chan common.Answer
+	QdrantClient     *qdrant_client.Client
+	VectorClient     *openai.LLM
+	TimeoutStatus    *status.TimeoutStatus
+	ConversationHeap mina.Records
 }
 
 func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 	ctx := context.TODO()
 	x := &XiaoAiFSM{
-		mina:   mina.InitMina(ctx),
-		miot:   miot.InitMiot(ctx),
-		ctx:    ctx,
-		qqueue: question,
-		aqueue: answer,
+		mina:             mina.InitMina(ctx),
+		miot:             miot.InitMiot(ctx),
+		ctx:              ctx,
+		qqueue:           question,
+		aqueue:           answer,
+		TimeoutStatus:    status.NewTimeoutStatus(time.Second * 10),
+		ConversationHeap: make([]*mina.Record, 0),
 	}
 
 	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
@@ -97,7 +104,6 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 	}
 
 	if !exist {
-
 		err = client.CreateCollection(ctx, &qdrant_client.CreateCollection{
 			CollectionName: QdrantWeakUpConnection,
 			VectorsConfig: qdrant_client.NewVectorsConfig(&qdrant_client.VectorParams{
@@ -129,8 +135,6 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("%#v  \n", len(embedings))
-
 	points := make([]*qdrant.PointStruct, 0)
 
 	for k, v := range embedings {
@@ -158,7 +162,8 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		},
 		fsm.Callbacks{
 			// 状态进入回调
-			"enter_state": func(ctx context.Context, e *fsm.Event) { x.enterState(e) },
+			"enter_state":        func(ctx context.Context, e *fsm.Event) { x.enterState(e) },
+			"leave_" + StateIdle: func(ctx context.Context, e *fsm.Event) { x.enterIdle() },
 		},
 	)
 
@@ -181,40 +186,76 @@ func (x *XiaoAiFSM) enterState(e *fsm.Event) {
 	}
 }
 
-// 各个状态的具体处理逻辑
-func (x *XiaoAiFSM) onEnterIdle() {
-	// 启动空闲计时器（比如30秒无操作进入睡眠）
-}
+func (x *XiaoAiFSM) enterIdle() {
+	//进入状态流转以前先准备一下数据
 
-func (x *XiaoAiFSM) onEnterListening() {
+	//获取设备的device_id
 	device_list, err := x.mina.GetMiDeviceList(x.ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	ticker := time.NewTicker(time.Second * 1)
-	defer ticker.Stop()
+	for _, device := range device_list {
+		if device.Name == "小爱音箱mini" {
+			x.FSM.SetMetadata("device_id", device.DeviceID)
+			x.FSM.SetMetadata("device", device)
+			break
+		}
+	}
 
-	for range ticker.C {
-		for _, device := range device_list {
-			if device.Name == "小爱音箱mini" {
-				conv, err := x.mina.GetUserConversations(x.ctx, 1, time.Now().UnixNano(), device.Hardware, device.DeviceID)
-				if err != nil {
-					internal.GetLogger().Warnf(x.ctx, "err:%v", err)
-					continue
-				}
+	//获取设备的model
+	miot_device_list, err := x.miot.GetMiotDevices(x.ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv.Records[0].Query)
+	for _, device := range miot_device_list {
+		if device.Name == "小爱音箱mini" {
+			x.FSM.SetMetadata("model", device.Model)
+			break
+		}
+	}
 
-				msg := conv.Records[0].Query
-				//通过当前是否在AI模式或者语音分析决定是否需要AI回答, 如果不流转到下个状态则就是ai回答
-				if !x.AiWeakUpSimilarCheck(msg) {
-					x.FSM.SetMetadata("question", msg)
-					x.FSM.SetMetadata("device_id", device.DeviceID)
-					x.FSM.Event(x.ctx, EventVoiceDetected)
-					return
-				}
+}
+
+func (x *XiaoAiFSM) onEnterIdle() {
+	// 启动空闲计时器（比如30秒无操作进入睡眠）
+}
+
+func (x *XiaoAiFSM) onEnterListening() {
+	device_id, ok := x.FSM.Metadata("device_id")
+	if !ok {
+		//没拿到device_id
+		internal.GetLogger().Errorf(x.ctx, "get device_id failed")
+		return
+	}
+	msg := heap.Pop(&x.ConversationHeap).(*mina.Record).Query
+
+	f := func() {
+		x.FSM.SetMetadata("question", msg)
+
+		x.FSM.Event(x.ctx, EventVoiceDetected)
+	}
+
+	//通过当前是否在AI模式或者语音分析决定是否需要AI回答, 如果不流转到下个状态则就是ai回答
+	if ok, _ := x.TimeoutStatus.Ok(QdrantWeakUpConnection); ok {
+		//续期
+		x.TimeoutStatus.Renewal(QdrantWeakUpConnection)
+		f()
+
+	} else {
+		if x.AiWeakUpSimilarCheck(msg) {
+			if x.TimeoutStatus.Exist(QdrantWeakUpConnection) {
+				x.TimeoutStatus.Renewal(QdrantWeakUpConnection)
+			} else {
+				x.TimeoutStatus.Add(QdrantWeakUpConnection, func() {
+					//播放退出的音效
+					internal.GetLogger().Infof(x.ctx, "exit ai mode")
+					x.mina.Controller(x.ctx, "play", "退出AI模式", "", device_id)
+				})
+				x.TimeoutStatus.Start(QdrantWeakUpConnection)
 			}
+			f()
 		}
 	}
 }
@@ -246,7 +287,6 @@ func (x *XiaoAiFSM) onEnterProcessing() {
 	internal.GetLogger().Infof(x.ctx, "进入处理状态，分析用户请求...")
 	//调用接口输出
 	question, ok := x.FSM.Metadata("question")
-
 	if !ok {
 		//没拿到问题
 		internal.GetLogger().Errorf(x.ctx, "get question failed")
@@ -260,7 +300,7 @@ func (x *XiaoAiFSM) onEnterProcessing() {
 			answer.Chunk.Reset()
 			break
 		}
-		fmt.Print(answer)
+
 		ans += answer.Chunk.String()
 	}
 
@@ -281,4 +321,40 @@ func (x *XiaoAiFSM) onEnterSpeaking() {
 func (x *XiaoAiFSM) onEnterSleeping() {
 	fmt.Println("进入睡眠状态，降低功耗...")
 	// 关闭非必要功能
+}
+
+func (x *XiaoAiFSM) GetUserConversation() {
+	d, ok := x.FSM.Metadata("device")
+	if !ok {
+		internal.GetLogger().Errorf(x.ctx, "get device failed")
+		return
+	}
+	device, ok := d.(*mina.MinaDevice)
+	if !ok {
+		log.Fatal("assert failed")
+	}
+
+	ticker := time.NewTicker(time.Second * 1)
+	defer ticker.Stop()
+
+	last_time := time.Now().UnixNano()
+	for range ticker.C {
+		conv, err := x.mina.GetUserConversations(x.ctx, 5, last_time, device.Hardware, device.DeviceID)
+		if err != nil {
+			internal.GetLogger().Warnf(x.ctx, "err:%v", err)
+			continue
+		}
+
+		for _, v := range conv.Records {
+			heap.Push(&x.ConversationHeap, v)
+		}
+
+		if x.ConversationHeap.Len() != 0 {
+			last_time = heap.Pop(&x.ConversationHeap).(*mina.Record).Time
+			_ = last_time //avoid (SA4006) go-staticcheck
+		}
+
+		return
+
+	}
 }

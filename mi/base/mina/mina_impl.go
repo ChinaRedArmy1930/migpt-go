@@ -1,6 +1,7 @@
 package mina
 
 import (
+	"container/heap"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -139,6 +140,10 @@ func (llm AnswerLLM) Allow()   {}
 func (llm AnswerTTS) Allow()   {}
 func (llm AnswerAudio) Allow() {}
 
+type Records []*Record
+
+var _ heap.Interface = (*Records)(nil)
+
 // Record 结构体，表示 records 数组中的每个元素
 type Record struct {
 	BitSet    [5]int64    `json:"bitSet,omitempty"`
@@ -148,10 +153,37 @@ type Record struct {
 	RequestID string      `json:"requestId,omitempty"`
 }
 
+// Len implements heap.Interface.
+func (r *Records) Len() int {
+	return len(*r)
+}
+
+// Less implements heap.Interface.
+func (r *Records) Less(i int, j int) bool {
+	return (*r)[i].Time > (*r)[j].Time
+}
+
+// Pop implements heap.Interface.
+func (r *Records) Pop() any {
+	t := (*r)[len(*r)-1]
+	*r = (*r)[0 : len(*r)-1]
+	return t
+}
+
+// Push implements heap.Interface.
+func (r *Records) Push(x any) {
+	*r = append(*r, x.(*Record))
+}
+
+// Swap implements heap.Interface.
+func (r *Records) Swap(i int, j int) {
+	(*r)[i], (*r)[j] = (*r)[j], (*r)[i]
+}
+
 // MiConversations 结构体
 type MiConversation struct {
 	BitSet      [3]int64 `json:"bitSet,omitempty"`
-	Records     []Record `json:"records,omitempty"`
+	Records     Records  `json:"records,omitempty"`
 	NextEndTime int64    `json:"nextEndTime,omitempty"`
 }
 

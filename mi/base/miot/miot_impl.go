@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -221,18 +220,20 @@ func (m *MiotAccount) requestMiot(ctx context.Context, method, path, device_id s
 	req.Header.Set("User-Agent", "iOS-14.4-6.0.103-iPhone12,3--D7744744F7AF32F0544445285880DD63E47D9BE9-8816080-84A3F44E137B71AE-iPhone")
 	req.Header.Set("x-xiaomi-protocal-flag-cli", "PROTOCAL-HTTP2")
 
-	proxyURL, err := url.Parse("http://127.0.0.1:8080") // 替换为你的代理地址
-	if err != nil {
-		internal.GetLogger().Errorf(ctx, "解析代理地址失败 => %s", err)
-		return nil, err
-	}
-	transport := &http.Transport{
-		Proxy:           http.ProxyURL(proxyURL),
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-
+	/*
+		proxyURL, err := url.Parse("http://127.0.0.1:8080") // 替换为你的代理地址
+		if err != nil {
+			internal.GetLogger().Errorf(ctx, "解析代理地址失败 => %s", err)
+			return nil, err
+		}
+		transport := &http.Transport{
+			Proxy:           http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+				client := &http.Client{Transport: transport}
+	*/
 	// 发送请求
-	client := &http.Client{Transport: transport}
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

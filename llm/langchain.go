@@ -11,7 +11,6 @@ import (
 	"migpt-go/doc"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
-	llm "migpt-go/llm/tools"
 	llmtools "migpt-go/llm/tools"
 	"os"
 	"strings"
@@ -52,7 +51,7 @@ func (l *LangchainProvider) Generate(ctx context.Context, prompt string, options
 		fnName := resp.Choices[0].FuncCall.Name
 		args := []byte(resp.Choices[0].FuncCall.Arguments)
 
-		if handler := llm.GetTool(fnName); handler != nil {
+		if handler := llmtools.GetTool(fnName); handler != nil {
 			result, err := handler(args)
 			if err != nil {
 				log.Fatalf("工具调用 %s 失败: %v", fnName, err)
@@ -75,7 +74,7 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 
 	over := func(a common.Answer) bool { return a.Over }
 
-	resp, err := l.client.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+	_, err := l.client.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
 		select {
 		case <-ctx.Done():
 			return errors.New("timeout")
@@ -98,9 +97,7 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 		return over, err
 	}
 
-	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
 	output <- common.Answer{Over: true}
-
 	return over, nil
 }
 
@@ -142,8 +139,6 @@ func NewLLM() (LLMProvider[common.Answer], error) {
 		internal.GetLogger().Warnf(ctx, "new in mem failed => %s", err)
 		return nil, err
 	}
-
-	//memory.NewConversationBuffer(memory.WithChatHistory())
 
 	cache.New(llm, inmem)
 
