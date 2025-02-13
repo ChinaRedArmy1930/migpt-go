@@ -47,7 +47,7 @@ func (l *LangchainProvider) Generate(ctx context.Context, prompt string, options
 	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
 
 	b := strings.Builder{}
-	if len(resp.Choices) != 0 && resp.Choices[0] != nil {
+	if len(resp.Choices) != 0 && resp.Choices[0] != nil && resp.Choices[0].FuncCall != nil {
 		internal.GetLogger().Infof(l.ctx, "choice %v", resp.Choices[0].FuncCall)
 		fnName := resp.Choices[0].FuncCall.Name
 		args := []byte(resp.Choices[0].FuncCall.Arguments)

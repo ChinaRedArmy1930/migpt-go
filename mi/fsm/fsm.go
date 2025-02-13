@@ -3,6 +3,7 @@ package fsm
 import (
 	"context"
 	"fmt"
+	"log"
 	"migpt-go/config"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
@@ -13,7 +14,10 @@ import (
 
 	"github.com/looplab/fsm"
 	"github.com/qdrant/go-client/qdrant"
+	qdrant_client "github.com/qdrant/go-client/qdrant"
 	"github.com/tmc/langchaingo/llms/openai"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/encoding/gzip"
 )
 
 // 状态定义
@@ -46,7 +50,7 @@ type XiaoAiFSM struct {
 	miot         miot.IMiot
 	qqueue       chan<- string
 	aqueue       <-chan common.Answer
-	QdrantClient *qdrant.Client
+	QdrantClient *qdrant_client.Client
 	VectorClient *openai.LLM
 }
 
@@ -60,18 +64,53 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		aqueue: answer,
 	}
 
-	//sudo docker run -d  -p 6333:6333   qdrant/qdrant
-	client, err := qdrant.NewClient(&qdrant.Config{
+	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
+	client, err := qdrant_client.NewClient(&qdrant_client.Config{
 		Host:                   "9.134.91.245",
-		Port:                   6333,
+		Port:                   6334,
 		SkipCompatibilityCheck: true,
+		GrpcOptions: []grpc.DialOption{grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(1024),
+			grpc.UseCompressor(gzip.Name),
+		)},
 	})
 
+	x.QdrantClient = client
+
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+	}
+	collections, err := x.QdrantClient.ListCollections(x.ctx)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	//使用 embeddings 将文本计算成向量
+	internal.GetLogger().Infof(x.ctx, "collection %s", collections)
+
+	exist := false
+
+	for _, v := range collections {
+		if v == QdrantWeakUpConnection {
+			exist = true
+			break
+		}
+	}
+
+	if !exist {
+
+		err = client.CreateCollection(ctx, &qdrant_client.CreateCollection{
+			CollectionName: QdrantWeakUpConnection,
+			VectorsConfig: qdrant_client.NewVectorsConfig(&qdrant_client.VectorParams{
+				Size:     1024,
+				Distance: qdrant_client.Distance_Cosine,
+			}),
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	//	使用 embeddings 将文本计算成向量
 	opts := []openai.Option{
 		openai.WithBaseURL(config.DefaultConfig.LLM.BaseUrl),
 		openai.WithToken(os.Getenv("apikey")),
@@ -80,28 +119,17 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 
 	llm, err := openai.New(opts...)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	x.VectorClient = llm
 
 	embedings, err := llm.CreateEmbedding(ctx, config.DefaultConfig.Ai.WakeUpKeyWords)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	fmt.Printf("%#v  \n", len(embedings))
-
-	err = client.CreateCollection(context.TODO(), &qdrant.CreateCollection{
-		CollectionName: QdrantWeakUpConnection,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size:     1024,
-			Distance: qdrant.Distance_Cosine,
-		}),
-	})
-	if err != nil {
-		panic(err)
-	}
 
 	points := make([]*qdrant.PointStruct, 0)
 
@@ -117,8 +145,6 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		Wait:           new(bool),
 		Points:         points,
 	})
-
-	x.QdrantClient = client
 
 	x.FSM = fsm.NewFSM(
 		StateIdle,
@@ -163,7 +189,7 @@ func (x *XiaoAiFSM) onEnterIdle() {
 func (x *XiaoAiFSM) onEnterListening() {
 	device_list, err := x.mina.GetMiDeviceList(x.ctx)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	ticker := time.NewTicker(time.Second * 1)
@@ -181,9 +207,8 @@ func (x *XiaoAiFSM) onEnterListening() {
 				internal.GetLogger().Infof(x.ctx, "conv:%#v", conv.Records[0].Query)
 
 				msg := conv.Records[0].Query
-
-				//判断是否需要进入Ai模式
-				if !x.AiMode(msg) {
+				//通过当前是否在AI模式或者语音分析决定是否需要AI回答, 如果不流转到下个状态则就是ai回答
+				if !x.AiWeakUpSimilarCheck(msg) {
 					x.FSM.SetMetadata("question", msg)
 					x.FSM.SetMetadata("device_id", device.DeviceID)
 					x.FSM.Event(x.ctx, EventVoiceDetected)
@@ -194,11 +219,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 	}
 }
 
-func (x *XiaoAiFSM) AiMode(msg string) bool {
-
-	c, _ := x.QdrantClient.ListCollections(x.ctx)
-	internal.GetLogger().Infof(x.ctx, "collection %s", c)
-
+func (x *XiaoAiFSM) AiWeakUpSimilarCheck(msg string) bool {
 	//将数据算成向量
 	embedding, err := x.VectorClient.CreateEmbedding(x.ctx, []string{msg})
 	if err != nil {
@@ -219,7 +240,6 @@ func (x *XiaoAiFSM) AiMode(msg string) bool {
 
 	internal.GetLogger().Infof(x.ctx, "result => %#v", search_result[0])
 	return search_result[0].Score > 0.8
-
 }
 
 func (x *XiaoAiFSM) onEnterProcessing() {

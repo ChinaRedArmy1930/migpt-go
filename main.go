@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
 	"migpt-go/llm"
@@ -12,6 +13,10 @@ import (
 	_ "migpt-go/llm/tools/gen"
 	_ "net/http/pprof"
 )
+
+func init() {
+	log.SetFlags(log.Llongfile | log.Default().Flags())
+}
 
 func main() {
 	go func() {
