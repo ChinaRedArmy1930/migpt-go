@@ -308,7 +308,6 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 	data.Add("hardware", hardware)
 	data.Add("source", "dialogu")
 	requestUrl := fmt.Sprintf("%s?%s", common.MinaConversationUrl, data.Encode())
-	fmt.Println(requestUrl)
 	req, err := http.NewRequest("GET", requestUrl, nil)
 	if err != nil {
 		internal_log.GetLogger().Errorf(ctx, "Error creating request: %s", err)
@@ -330,7 +329,7 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 		internal_log.GetLogger().Errorf(ctx, "解包失败: %s", err)
 		return nil, err
 	}
-	internal_log.GetLogger().Debugf(ctx, "respBody: %s \n", string(respBody))
+	//internal_log.GetLogger().Debugf(ctx, "respBody: %s \n", string(respBody))
 	var r common.Response[string]
 	err = json.Unmarshal(respBody, &r)
 	if err != nil {
@@ -339,16 +338,16 @@ func (m *MinaAccount) GetUserConversations(ctx context.Context, limit int, times
 	}
 
 	conversation := &MiConversation{}
-	internal_log.GetLogger().Debugf(ctx, "r.Data: %s \n", string(r.Data))
+	//internal_log.GetLogger().Debugf(ctx, "r.Data: %s \n", string(r.Data))
 	err = json.Unmarshal([]byte(r.Data), &conversation)
 	if err != nil {
 		internal_log.GetLogger().Errorf(ctx, "解包失败: %s, 原始数据: %s", err, string(respBody))
 		return nil, err
 	}
-
-	d, _ := json.MarshalIndent(conversation, " ", "	")
-	internal_log.GetLogger().Debugf(ctx, "conversations: %s \n", string(d))
-
+	/*
+		d, _ := json.MarshalIndent(conversation, " ", "	")
+		internal_log.GetLogger().Debugf(ctx, "conversations: %s \n", string(d))
+	*/
 	return conversation, nil
 }
 

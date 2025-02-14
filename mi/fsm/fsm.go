@@ -67,13 +67,13 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		ctx:              ctx,
 		qqueue:           question,
 		aqueue:           answer,
-		TimeoutStatus:    status.NewTimeoutStatus(time.Second * 10),
+		TimeoutStatus:    status.NewTimeoutStatus(time.Second * 20),
 		ConversationHeap: make([]*mina.Record, 0),
 	}
 
-	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
-	client, err := qdrant_client.NewClient(&qdrant_client.Config{
-		Host:                   "9.134.91.245",
+	//sudo docker run -d  -p 6333:6333   qdrant/qdrant
+	client, err := qdrant.NewClient(&qdrant.Config{
+		Host:                   "127.0.0.1",
 		Port:                   6334,
 		SkipCompatibilityCheck: true,
 		GrpcOptions: []grpc.DialOption{grpc.WithDefaultCallOptions(
@@ -172,6 +172,7 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 
 // 状态进入处理函数
 func (x *XiaoAiFSM) enterState(e *fsm.Event) {
+	internal.GetLogger().Debugf(x.ctx, "curr => %s, next status  => %s", x.FSM.Current(), e.Dst)
 	switch e.Dst {
 	case StateIdle:
 		x.onEnterIdle()
@@ -203,6 +204,8 @@ func (x *XiaoAiFSM) enterIdle() {
 		}
 	}
 
+	go x.GetUserConversation()
+
 	//获取设备的model
 	miot_device_list, err := x.miot.GetMiotDevices(x.ctx)
 	if err != nil {
@@ -223,17 +226,25 @@ func (x *XiaoAiFSM) onEnterIdle() {
 }
 
 func (x *XiaoAiFSM) onEnterListening() {
+	internal.GetLogger().Infof(x.ctx, "正在获取用户语句 ...")
 	device_id, ok := x.FSM.Metadata("device_id")
 	if !ok {
 		//没拿到device_id
 		internal.GetLogger().Errorf(x.ctx, "get device_id failed")
 		return
 	}
-	msg := heap.Pop(&x.ConversationHeap).(*mina.Record).Query
 
+	ticker := time.NewTicker(time.Second)
+
+	for range ticker.C {
+		if x.ConversationHeap.Len() != 0 {
+			break
+		}
+	}
+
+	msg := heap.Pop(&x.ConversationHeap).(*mina.Record).Query
 	f := func() {
 		x.FSM.SetMetadata("question", msg)
-
 		x.FSM.Event(x.ctx, EventVoiceDetected)
 	}
 
@@ -311,11 +322,15 @@ func (x *XiaoAiFSM) onEnterProcessing() {
 }
 
 func (x *XiaoAiFSM) onEnterSpeaking() {
-	internal.GetLogger().Infof(x.ctx, "进入回应状态，播放回答...")
+	internal.GetLogger().Infof(x.ctx, "进入回应状态，播放回答...  ")
 	// 调用语音合成和播放模块
 	d, _ := x.FSM.Metadata("device_id")
 	ans, _ := x.FSM.Metadata("answer")
 	x.mina.Controller(x.ctx, "play", ans.(string), "", d.(string))
+	err := x.FSM.Event(x.ctx, EventResponseComplete)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (x *XiaoAiFSM) onEnterSleeping() {
@@ -345,6 +360,8 @@ func (x *XiaoAiFSM) GetUserConversation() {
 			continue
 		}
 
+		internal.GetLogger().Debugf(x.ctx, "conv %d", conv.Records[0].Time)
+
 		for _, v := range conv.Records {
 			heap.Push(&x.ConversationHeap, v)
 		}
@@ -353,8 +370,5 @@ func (x *XiaoAiFSM) GetUserConversation() {
 			last_time = heap.Pop(&x.ConversationHeap).(*mina.Record).Time
 			_ = last_time //avoid (SA4006) go-staticcheck
 		}
-
-		return
-
 	}
 }

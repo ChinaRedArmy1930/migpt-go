@@ -36,18 +36,20 @@ func main() {
 		}
 		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*100)
 		defer cancel()
-		q := <-question
-		_, err = lc.StreamGenerate(ctx, q, answer)
-		if err != nil {
-			panic(err)
-		}
 
-		ans, err := lc.Generate(ctx, q)
-		if err != nil {
-			panic(err)
-		}
+		for q := range question {
+			_, err = lc.StreamGenerate(ctx, q, answer)
+			if err != nil {
+				panic(err)
+			}
 
-		internal.GetLogger().Debugf(ctx, "ans %s", ans)
+			ans, err := lc.Generate(ctx, q)
+			if err != nil {
+				panic(err)
+			}
+
+			internal.GetLogger().Debugf(ctx, "ans %s", ans)
+		}
 	}()
 
 	select {}

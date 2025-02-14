@@ -43,7 +43,6 @@ func (l *LangchainProvider) Generate(ctx context.Context, prompt string, options
 		internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
 		return "", err
 	}
-	internal.GetLogger().Infof(l.ctx, "resp %#v", resp.Choices)
 
 	b := strings.Builder{}
 	if len(resp.Choices) != 0 && resp.Choices[0] != nil && resp.Choices[0].FuncCall != nil {
