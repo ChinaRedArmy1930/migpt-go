@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"migpt-go/internal/common"
-	internal "migpt-go/internal/log"
 	"migpt-go/llm"
 	"migpt-go/mi/fsm"
 	"net/http"
@@ -43,12 +42,11 @@ func main() {
 				panic(err)
 			}
 
-			ans, err := lc.Generate(ctx, q)
+			_, err := lc.Generate(ctx, q)
 			if err != nil {
 				panic(err)
 			}
 
-			internal.GetLogger().Debugf(ctx, "ans %s", ans)
 		}
 	}()
 

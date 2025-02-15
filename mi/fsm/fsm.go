@@ -172,7 +172,6 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 
 // 状态进入处理函数
 func (x *XiaoAiFSM) enterState(e *fsm.Event) {
-	internal.GetLogger().Debugf(x.ctx, "curr => %s, next status  => %s", x.FSM.Current(), e.Dst)
 	switch e.Dst {
 	case StateIdle:
 		x.onEnterIdle()
@@ -243,6 +242,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 	}
 
 	msg := heap.Pop(&x.ConversationHeap).(*mina.Record).Query
+	internal.GetLogger().Infof(x.ctx, "获取到用户问题:%s", msg)
 	f := func() {
 		x.FSM.SetMetadata("question", msg)
 		x.FSM.Event(x.ctx, EventVoiceDetected)
@@ -264,6 +264,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 					internal.GetLogger().Infof(x.ctx, "exit ai mode")
 					x.mina.Controller(x.ctx, "play", "退出AI模式", "", device_id)
 				})
+				x.mina.Controller(x.ctx, "play", "检测到AI召唤词,进入AI模式", "", device_id)
 				x.TimeoutStatus.Start(QdrantWeakUpConnection)
 			}
 			f()
@@ -290,7 +291,6 @@ func (x *XiaoAiFSM) AiWeakUpSimilarCheck(msg string) bool {
 		panic(err)
 	}
 
-	internal.GetLogger().Infof(x.ctx, "result => %#v", search_result[0])
 	return search_result[0].Score > 0.8
 }
 
@@ -351,23 +351,24 @@ func (x *XiaoAiFSM) GetUserConversation() {
 
 	ticker := time.NewTicker(time.Second * 1)
 	defer ticker.Stop()
-
-	last_time := time.Now().UnixNano()
+	last_time := time.Now().UnixMilli()
+	//第一条消息需要过滤掉
 	for range ticker.C {
-		conv, err := x.mina.GetUserConversations(x.ctx, 5, last_time, device.Hardware, device.DeviceID)
+		conv, err := x.mina.GetUserConversations(x.ctx, 10, time.Now().UnixMilli(), device.Hardware, device.DeviceID)
 		if err != nil {
 			internal.GetLogger().Warnf(x.ctx, "err:%v", err)
 			continue
 		}
 
-		internal.GetLogger().Debugf(x.ctx, "conv %d", conv.Records[0].Time)
-
 		for _, v := range conv.Records {
-			heap.Push(&x.ConversationHeap, v)
+			if v.Time > last_time {
+				internal.GetLogger().Warnf(x.ctx, "get conv msg %s", v.Query)
+				heap.Push(&x.ConversationHeap, v)
+			}
 		}
 
 		if x.ConversationHeap.Len() != 0 {
-			last_time = heap.Pop(&x.ConversationHeap).(*mina.Record).Time
+			last_time = (x.ConversationHeap[0]).Time
 			_ = last_time //avoid (SA4006) go-staticcheck
 		}
 	}
