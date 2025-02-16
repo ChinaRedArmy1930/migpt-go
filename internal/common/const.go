@@ -47,3 +47,22 @@ const (
 var (
 	MiAccountResultRegexp = regexp.MustCompile(`^&&&START&&&({.*})$`)
 )
+
+const (
+	SpecUrl      = "https://miot-spec.org/miot-spec-v2/instance"
+	SpecTypesUrl = "https://miot-spec.org/miot-spec-v2/spec/services"
+	AllSpecUrl   = SpecUrl + "s?status=all"
+
+	//referance: https://miot-spec.org/miot-spec-v2/spec/services
+	IntelligentSpeakerService = "urn:miot-spec-v2:service:intelligent-speaker:0000789B"
+
+	//referance:https://miot-spec.org/miot-spec-v2/spec/properties
+	TextContentProperty = "urn:miot-spec-v2:property:text-content:000000FA"
+
+	//referance: https://miot-spec.org/miot-spec-v2/spec/actions
+	WakeUpAction               = "urn:miot-spec-v2:action:wake-up:0000283F"
+	PlayTextAction             = "urn:miot-spec-v2:action:play-text:00002841"
+	PlayRadioAction            = "urn:miot-spec-v2:action:play-radio:00002840"
+	PlayMusicAction            = "urn:miot-spec-v2:action:play-music:00002846"
+	ExecuteTextDirectiveAction = "urn:miot-spec-v2:action:execute-text-directive:00002842"
+)

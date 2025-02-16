@@ -11,7 +11,9 @@ import (
 	"migpt-go/internal/status"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
+	"migpt-go/mi/spec"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/looplab/fsm"
@@ -57,6 +59,7 @@ type XiaoAiFSM struct {
 	VectorClient     *openai.LLM
 	TimeoutStatus    *status.TimeoutStatus
 	ConversationHeap mina.Records
+	spec             spec.DeviceSpec
 }
 
 func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
@@ -203,20 +206,66 @@ func (x *XiaoAiFSM) enterIdle() {
 		}
 	}
 
-	go x.GetUserConversation()
+	//获取设备的SPEC指令
+	{
+		//首先获取所有设备的spec
+		instances := spec.GetAllSpec(x.ctx)
+		model_map := make(map[string]string)
+		for _, v := range instances.Instances {
+			model_map[v.Model] = v.Type
+		}
 
-	//获取设备的model
-	miot_device_list, err := x.miot.GetMiotDevices(x.ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
+		miot_devices, err := x.miot.GetMiotDevices(x.ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	for _, device := range miot_device_list {
-		if device.Name == "小爱音箱mini" {
-			x.FSM.SetMetadata("model", device.Model)
-			break
+		//urn:miot-spec-v2:device:speaker:0000A015:xiaomi-lx01:1
+		//xiaomi.wifispeaker.lx01
+		device_type := ""
+		for _, device := range miot_devices {
+			if device.Name == "小爱音箱mini" {
+				device_type = model_map[device.Model]
+				internal.GetLogger().Debugf(x.ctx, "model => %s, type => %s", device.Model, device_type)
+				break
+			}
+		}
+
+		//找到type后, 找到设备对应的指令
+		device_spec := spec.GetDeviceSpecCommmond(device_type)
+
+		//找到智能音响service的指令
+		for _, v := range device_spec.Services {
+			if strings.Contains(v.Type, common.IntelligentSpeakerService) {
+				siid := v.IID
+				piid := -1
+				aiid := 1
+				for _, property := range v.Properties {
+					switch {
+					case strings.Contains(property.Type, common.TextContentProperty):
+						{
+							piid = property.IID
+							break
+						}
+					}
+				}
+
+				for _, action := range v.Actions {
+					for _, a := range []string{
+						common.WakeUpAction} {
+						if strings.Contains(action.Type, a) {
+							aiid = action.IID
+							break
+						}
+					}
+				}
+
+				internal.GetLogger().Debugf(x.ctx, "[%d, %d, %d]", siid, piid, aiid)
+			}
 		}
 	}
+
+	go x.GetUserConversation()
 
 }
 
