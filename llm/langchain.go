@@ -16,10 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tmc/langchaingo/agents"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/cache"
 	"github.com/tmc/langchaingo/llms/cache/inmemory"
 	"github.com/tmc/langchaingo/llms/openai"
+	"github.com/tmc/langchaingo/tools"
+	"github.com/tmc/langchaingo/tools/serpapi"
 )
 
 type LangchainProvider struct {
@@ -37,7 +40,9 @@ func (l *LangchainProvider) Generate(ctx context.Context, prompt string, options
 		llms.TextParts(llms.ChatMessageTypeSystem, l.system_prompts),
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	}
+	s, _ := serpapi.New()
 
+	a := agents.NewConversationalAgent(&openai.LLM{}, append(make([]tools.Tool, 0), s))
 	resp, err := l.client.GenerateContent(ctx, content, llms.WithTools(llmtools.Tools))
 	if err != nil {
 		internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
@@ -73,24 +78,25 @@ func (l *LangchainProvider) StreamGenerate(ctx context.Context, prompt string, o
 
 	over := func(a common.Answer) bool { return a.Over }
 
-	_, err := l.client.GenerateContent(ctx, content, llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
-		select {
-		case <-ctx.Done():
-			return errors.New("timeout")
-		default:
-		}
+	_, err := l.client.GenerateContent(ctx, content,
+		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+			select {
+			case <-ctx.Done():
+				return errors.New("timeout")
+			default:
+			}
 
-		if len(chunk) == 0 {
+			if len(chunk) == 0 {
+				return nil
+			}
+			b := strings.Builder{}
+			b.Write(chunk)
+			output <- common.Answer{
+				Chunk: b,
+				Over:  false,
+			}
 			return nil
-		}
-		b := strings.Builder{}
-		b.Write(chunk)
-		output <- common.Answer{
-			Chunk: b,
-			Over:  false,
-		}
-		return nil
-	}))
+		}))
 	if err != nil {
 		internal.GetLogger().Debugf(ctx, "generate content failed:%s", err)
 		return over, err

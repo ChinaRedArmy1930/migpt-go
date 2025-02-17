@@ -18,7 +18,6 @@ func RegisterTool(name string, handler ToolHandler) {
 }
 
 func GetTool(name string) ToolHandler {
-
 	return toolRegistry[name]
 }
 
