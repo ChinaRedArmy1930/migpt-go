@@ -238,6 +238,7 @@ func (m *MiotAccount) requestMiot(ctx context.Context, method, path, device_id s
 	if err != nil {
 		return nil, err
 	}
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		internal.GetLogger().Errorf(ctx, "解包失败: %s", err)
@@ -256,11 +257,13 @@ func (m *MiotAccount) rpcControl(ctx context.Context, device_id, method string, 
 }
 
 func (m *MiotAccount) miotSpecControl(ctx context.Context, device_id, commond string, params any) ([]byte, error) {
-	return m.requestMiot(ctx, http.MethodPost, fmt.Sprintf("/miotspec/%s", commond), device_id, map[string]any{
+	t, err := m.requestMiot(ctx, http.MethodPost, fmt.Sprintf("/miotspec/%s", commond), device_id, map[string]any{
 		"id":         1,
 		"datasource": 2,
 		"params":     params,
 	})
+
+	return []byte(t), err
 }
 
 func (m *MiotAccount) getProperty(ctx context.Context, device_id string, siid, piid int) ([]byte, error) {
@@ -280,13 +283,18 @@ func (m *MiotAccount) setProperty(ctx context.Context, device_id string, siid, p
 	})
 }
 
-func (m *MiotAccount) Action(ctx context.Context, device_id string, siid, aiid int, args []any) ([]byte, error) {
-	return m.miotSpecControl(ctx, device_id, "action", map[string]any{
+func (m *MiotAccount) action(ctx context.Context, args ...interface{}) (string, error) {
+	device_id := args[0].(string)
+	siid := args[1].(int64)
+	aiid := args[1].([]any)
+	t, err := m.miotSpecControl(ctx, device_id, "action", map[string]any{
 		"did":  device_id,
 		"siid": siid,
 		"aiid": aiid,
 		"in":   args,
 	})
+
+	return string(t), err
 }
 
 func InitMiot(ctx context.Context) IMiot {
@@ -305,6 +313,8 @@ func InitMiot(ctx context.Context) IMiot {
 	iot := &MiotAccount{
 		MIAccount: *act,
 	}
+
+	iot.RegisterControl("action", iot.action)
 
 	return iot
 }
