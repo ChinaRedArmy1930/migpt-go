@@ -23,6 +23,8 @@ func main() {
 	}()
 	ctx := context.TODO()
 
+	//load所有数据到数据库
+
 	question := make(chan string)
 	answer := make(chan common.Answer)
 	xiaoai := fsm.NewXiaoAi(question, answer)
@@ -37,7 +39,7 @@ func main() {
 		defer cancel()
 
 		for q := range question {
-			//此处决策
+			//此处决策，是获取知识库还是走 api
 			_, err = lc.StreamGenerate(ctx, q, answer)
 			if err != nil {
 				panic(err)

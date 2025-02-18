@@ -83,7 +83,7 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		actCommand:       make(map[tdid]map[tkeyword]act),
 	}
 
-	//sudo docker run -d  -p 6333:6333   qdrant/qdrant
+	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
 	client, err := qdrant.NewClient(&qdrant.Config{
 		Host:                   "9.134.91.245",
 		Port:                   6334,

@@ -1,4 +1,4 @@
-package llm
+package qdrant_store
 
 import (
 	"context"

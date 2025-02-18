@@ -16,10 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tmc/langchaingo/agents"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/cache"
 	"github.com/tmc/langchaingo/llms/cache/inmemory"
 	"github.com/tmc/langchaingo/llms/openai"
+	"github.com/tmc/langchaingo/tools"
+	"github.com/tmc/langchaingo/tools/serpapi"
 )
 
 type LangchainProvider struct {
@@ -38,8 +41,8 @@ func (l *LangchainProvider) Generate(ctx context.Context, prompt string, options
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	}
 
-	//s, _ := serpapi.New()
-	//a := agents.NewConversationalAgent(&openai.LLM{}, append(make([]tools.Tool, 0), s))
+	s, _ := serpapi.New()
+	agents.NewConversationalAgent(&openai.LLM{}, append(make([]tools.Tool, 0), s))
 
 	resp, err := l.client.GenerateContent(ctx, content, llms.WithTools(llmtools.Tools))
 	if err != nil {
