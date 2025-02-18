@@ -37,6 +37,7 @@ func main() {
 		defer cancel()
 
 		for q := range question {
+			//此处决策
 			_, err = lc.StreamGenerate(ctx, q, answer)
 			if err != nil {
 				panic(err)

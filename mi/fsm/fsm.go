@@ -229,8 +229,6 @@ func (x *XiaoAiFSM) enterIdle() {
 			log.Fatal(err)
 		}
 
-		//urn:miot-spec-v2:device:speaker:0000A015:xiaomi-lx01:1
-		//xiaomi.wifispeaker.lx01
 		device_type := ""
 		for _, device := range miot_devices {
 			if device.Name == "小爱音箱mini" {
@@ -337,7 +335,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 					internal.GetLogger().Infof(x.ctx, "exit ai mode")
 					x.mina.Controller(x.ctx, "play", "退出AI模式", "", device_id)
 				})
-				//检测到AI后,让音响静音"
+				//检测到AI后,让音响静音
 				r, err := x.miot.Controller(x.ctx, "action", device_id,
 					x.actCommand[tdid(did.(string))][common.PauseWord].siid,
 					x.actCommand[tdid(did.(string))][common.PauseWord].aiid,
@@ -347,11 +345,12 @@ func (x *XiaoAiFSM) onEnterListening() {
 					return
 				}
 
-				internal.GetLogger().Errorf(x.ctx, "小爱静音 => %s", r)
+				internal.GetLogger().Infof(x.ctx, "小爱静音 => %s", r)
 
 				x.mina.Controller(x.ctx, "play", "检测到AI召唤词,进入AI模式", "", device_id)
 				x.TimeoutStatus.Start(QdrantWeakUpConnection)
 			}
+
 			f()
 		}
 	}

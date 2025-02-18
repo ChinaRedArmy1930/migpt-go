@@ -34,17 +34,21 @@ type Options struct {
 	Stream      bool
 }
 
+var _ LLMProvider[any] = (*unimplementedLLMProvider)(nil)
+
 func (l *unimplementedLLMProvider) Init(ctx context.Context) error { return nil }
+
 func (l *unimplementedLLMProvider) Generate(ctx context.Context, prompt string, options ...Option) (string, error) {
 	return "", nil
 }
+
 func (l *unimplementedLLMProvider) StreamGenerate(ctx context.Context, prompt string, output chan<- any, options ...Option) (func(t any) bool, error) {
 	return nil, nil
 }
+
 func (l *unimplementedLLMProvider) ModelInfo() ModelMeta { return ModelMeta{} }
-func (l *unimplementedLLMProvider) Close() error         { return nil }
+
+func (l *unimplementedLLMProvider) Close() error { return nil }
 
 // 接口的默认实现
 type unimplementedLLMProvider struct{}
-
-var _ LLMProvider[any] = (*unimplementedLLMProvider)(nil)

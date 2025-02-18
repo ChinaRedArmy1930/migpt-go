@@ -21,7 +21,13 @@ type LLMConfig struct {
 }
 
 type AiConfig struct {
-	WakeUpKeyWords []string `mapstructure:"wake_up_key_words"`
+	WakeUpKeyWords []string     `mapstructure:"wake_up_key_words"`
+	KnowledgeHub   string       `mapstructure:"knowledge_hub"`
+	Qdrant         QdrantConfig `mapstructure:"qdrant"`
+}
+
+type QdrantConfig struct {
+	Url string `mapstructure:"Url"`
 }
 
 type Config struct {
