@@ -9,10 +9,13 @@ import (
 	"migpt-go/internal/common"
 	internal "migpt-go/internal/log"
 	"migpt-go/internal/status"
+	qdrant_store "migpt-go/llm/vector_stores/qdrant"
 	"migpt-go/mi/base/mina"
 	"migpt-go/mi/base/miot"
 	"migpt-go/mi/spec"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,7 +46,7 @@ const (
 )
 
 const (
-	QdrantWeakUpConnection = "weak_up_keyword_connection"
+	StateAiMode = "aimode"
 )
 
 type tdid string
@@ -82,11 +85,15 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		ConversationHeap: make([]*mina.Record, 0),
 		actCommand:       make(map[tdid]map[tkeyword]act),
 	}
-
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	port, _ := strconv.Atoi(u.Port())
 	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host:                   "9.134.91.245",
-		Port:                   6334,
+		Host:                   u.Host,
+		Port:                   port,
 		SkipCompatibilityCheck: true,
 		GrpcOptions: []grpc.DialOption{grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(1024),
@@ -98,34 +105,6 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 
 	if err != nil {
 		log.Fatal(err)
-	}
-	collections, err := x.QdrantClient.ListCollections(x.ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	internal.GetLogger().Infof(x.ctx, "collection %s", collections)
-
-	exist := false
-
-	for _, v := range collections {
-		if v == QdrantWeakUpConnection {
-			exist = true
-			break
-		}
-	}
-
-	if !exist {
-		err = client.CreateCollection(ctx, &qdrant.CreateCollection{
-			CollectionName: QdrantWeakUpConnection,
-			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-				Size:     1024,
-				Distance: qdrant.Distance_Cosine,
-			}),
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	//	使用 embeddings 将文本计算成向量
@@ -141,26 +120,6 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 	}
 
 	x.VectorClient = llm
-
-	embedings, err := llm.CreateEmbedding(ctx, config.DefaultConfig.Ai.WakeUpKeyWords)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	points := make([]*qdrant.PointStruct, 0)
-
-	for k, v := range embedings {
-		points = append(points, &qdrant.PointStruct{
-			Id:      qdrant.NewIDNum(uint64(k + 1)),
-			Vectors: qdrant.NewVectors(v...),
-		})
-	}
-
-	client.Upsert(context.TODO(), &qdrant.UpsertPoints{
-		CollectionName: QdrantWeakUpConnection,
-		Wait:           new(bool),
-		Points:         points,
-	})
 
 	x.FSM = fsm.NewFSM(
 		StateIdle,
@@ -319,18 +278,18 @@ func (x *XiaoAiFSM) onEnterListening() {
 		x.FSM.Event(x.ctx, EventVoiceDetected)
 	}
 
-	//通过当前是否在AI模式或者语音分析决定是否需要AI回答, 如果不流转到下个状态则就是ai回答
-	if ok, _ := x.TimeoutStatus.Ok(QdrantWeakUpConnection); ok {
+	//通过当前是否在AI模式或者语音分析决定是否需要AI回答, 如果流转到下个状态则就是ai回答
+	if ok, _ := x.TimeoutStatus.Ok(StateAiMode); ok {
 		//续期
-		x.TimeoutStatus.Renewal(QdrantWeakUpConnection)
+		x.TimeoutStatus.Renewal(StateAiMode)
 		f()
 
 	} else {
 		if x.AiWeakUpSimilarCheck(msg) {
-			if x.TimeoutStatus.Exist(QdrantWeakUpConnection) {
-				x.TimeoutStatus.Renewal(QdrantWeakUpConnection)
+			if x.TimeoutStatus.Exist(StateAiMode) {
+				x.TimeoutStatus.Renewal(StateAiMode)
 			} else {
-				x.TimeoutStatus.Add(QdrantWeakUpConnection, func() {
+				x.TimeoutStatus.Add(StateAiMode, func() {
 					//播放退出的音效
 					internal.GetLogger().Infof(x.ctx, "exit ai mode")
 					x.mina.Controller(x.ctx, "play", "退出AI模式", "", device_id)
@@ -348,7 +307,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 				internal.GetLogger().Infof(x.ctx, "小爱静音 => %s", r)
 
 				x.mina.Controller(x.ctx, "play", "检测到AI召唤词,进入AI模式", "", device_id)
-				x.TimeoutStatus.Start(QdrantWeakUpConnection)
+				x.TimeoutStatus.Start(StateAiMode)
 			}
 
 			f()
@@ -366,7 +325,7 @@ func (x *XiaoAiFSM) AiWeakUpSimilarCheck(msg string) bool {
 	var limit = uint64(1)
 
 	search_result, err := x.QdrantClient.Query(x.ctx, &qdrant.QueryPoints{
-		CollectionName: QdrantWeakUpConnection,
+		CollectionName: (&qdrant_store.WakeUp{}).CollectionName(),
 		Query:          qdrant.NewQuery(embedding[0]...),
 		Limit:          &limit,
 	})

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"migpt-go/config"
+	"migpt-go/llm/vector_stores"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -14,10 +16,24 @@ import (
 )
 
 const (
-	DocumentCollection = "DocumentCollection"
+	knowledgeHubCollection = "KnowledgeHubCollection"
 )
 
-func LoadDocument(ctx context.Context, path string) error {
+var _ vector_stores.VectorStore = (*KnowledgeHub)(nil)
+
+type KnowledgeHub struct{}
+
+// CollectionName implements vector_stores.VectorStore.
+func (k *KnowledgeHub) CollectionName() string {
+	return knowledgeHubCollection
+}
+
+// Load implements vector_stores.VectorStore.
+func (k *KnowledgeHub) Load() error {
+	return loadDocument(context.TODO(), config.DefaultConfig.Ai.KnowledgeHub)
+}
+
+func loadDocument(ctx context.Context, path string) error {
 	u, err := url.Parse(config.DefaultConfig.Ai.Qdrant.Url)
 	if err != nil {
 		return err
@@ -26,7 +42,24 @@ func LoadDocument(ctx context.Context, path string) error {
 	q, err := qdrant.New(
 		qdrant.WithURL(*u),
 	)
+	if err != nil {
+		return err
+	}
 
+	collectionConfig := map[string]interface{}{
+		"vectors": map[string]interface{}{
+			"size":     1024,
+			"distance": "Cosine",
+		},
+	}
+
+	url, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+	if err != nil {
+		return err
+	}
+
+	url = url.JoinPath("collections", knowledgeHubCollection)
+	_, _, err = qdrant.DoRequest(context.TODO(), *url, "", http.MethodPut, collectionConfig)
 	if err != nil {
 		return err
 	}

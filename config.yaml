@@ -5,3 +5,6 @@ LLM:
 
 Ai:
   wake_up_key_words: ["召唤AI", "使用AI", "使用deepseek"]
+
+Qdrant:
+  url: http://9.134.91.245:6334

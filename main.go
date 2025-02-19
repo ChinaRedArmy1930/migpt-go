@@ -10,6 +10,8 @@ import (
 	"time"
 
 	_ "migpt-go/llm/tools/gen"
+	"migpt-go/llm/vector_stores"
+	qdrant_store "migpt-go/llm/vector_stores/qdrant"
 	_ "net/http/pprof"
 )
 
@@ -24,6 +26,9 @@ func main() {
 	ctx := context.TODO()
 
 	//load所有数据到数据库
+	for _, v := range []vector_stores.VectorStore{&qdrant_store.KnowledgeHub{}, &qdrant_store.WakeUp{}} {
+		v.Load()
+	}
 
 	question := make(chan string)
 	answer := make(chan common.Answer)
@@ -39,7 +44,9 @@ func main() {
 		defer cancel()
 
 		for q := range question {
-			//此处决策，是获取知识库还是走 api
+
+			//此处决策，是获取知识库还是走api
+
 			_, err = lc.StreamGenerate(ctx, q, answer)
 			if err != nil {
 				panic(err)

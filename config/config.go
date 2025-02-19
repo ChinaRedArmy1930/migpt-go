@@ -31,8 +31,9 @@ type QdrantConfig struct {
 }
 
 type Config struct {
-	LLM LLMConfig
-	Ai  AiConfig
+	LLM    LLMConfig
+	Ai     AiConfig
+	Qdrant QdrantConfig
 }
 
 func LoadConfig(path string) (*Config, error) {
