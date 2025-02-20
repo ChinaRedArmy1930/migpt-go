@@ -24,6 +24,11 @@ var _ vector_stores.VectorStore = (*WakeUp)(nil)
 
 type WakeUp struct{}
 
+// SimilaritySearch implements vector_stores.VectorStore.
+func (w *WakeUp) SimilaritySearch(msg string) {
+	panic("unimplemented")
+}
+
 // CollectionName implements vector_stores.VectorStore.
 func (w *WakeUp) CollectionName() string {
 	panic("unimplemented")

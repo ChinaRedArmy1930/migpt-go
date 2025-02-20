@@ -23,6 +23,11 @@ var _ vector_stores.VectorStore = (*KnowledgeHub)(nil)
 
 type KnowledgeHub struct{}
 
+// SimilaritySearch implements vector_stores.VectorStore.
+func (k *KnowledgeHub) SimilaritySearch(msg string) {
+	panic("unimplemented")
+}
+
 // CollectionName implements vector_stores.VectorStore.
 func (k *KnowledgeHub) CollectionName() string {
 	return knowledgeHubCollection
