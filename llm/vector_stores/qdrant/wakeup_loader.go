@@ -31,7 +31,7 @@ func (w *WakeUp) SimilaritySearch(msg string) {
 
 // CollectionName implements vector_stores.VectorStore.
 func (w *WakeUp) CollectionName() string {
-	panic("unimplemented")
+	return QdrantWeakUpConnection
 }
 
 // Load implements vector_stores.VectorStore.
