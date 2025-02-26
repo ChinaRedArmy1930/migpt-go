@@ -92,7 +92,7 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 	port, _ := strconv.Atoi(u.Port())
 	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host:                   u.Host,
+		Host:                   u.Hostname(),
 		Port:                   port,
 		SkipCompatibilityCheck: true,
 		GrpcOptions: []grpc.DialOption{grpc.WithDefaultCallOptions(
@@ -264,6 +264,9 @@ func (x *XiaoAiFSM) onEnterListening() {
 	}
 
 	ticker := time.NewTicker(time.Second)
+
+	//test
+	x.ConversationHeap.Push(&mina.Record{Query: "今天是什么日子"})
 
 	for range ticker.C {
 		if x.ConversationHeap.Len() != 0 {

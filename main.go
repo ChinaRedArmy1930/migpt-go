@@ -5,10 +5,12 @@ import (
 	"log"
 	"migpt-go/config"
 	"migpt-go/internal/common"
+	internal "migpt-go/internal/log"
 	"migpt-go/llm"
 	"migpt-go/mi/fsm"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	_ "migpt-go/llm/tools/gen"
@@ -44,32 +46,42 @@ func main() {
 	go xiaoai.FSM.Event(ctx, fsm.EventWakeUp) // 唤醒
 
 	go func() {
-		lc, err := llm.NewLLM()
-		if err != nil {
-			panic(err)
-		}
-		ctx, cancel := context.WithTimeout(context.TODO(), time.Second*100)
-		defer cancel()
-
 		for q := range question {
 			//此处决策，是获取知识库还是走api
-			_, err = lc.StreamGenerate(ctx, q, answer)
-			if err != nil {
-				panic(err)
+			internal.GetLogger().Infof(ctx, "get question %s", q)
+			if false {
+				internal.GetLogger().Infof(ctx, "ask ai")
+				AskAi(q, answer)
+			} else {
+				internal.GetLogger().Infof(ctx, "search dochub")
+				AskDocHub(q, answer)
 			}
-
-			_, err := lc.Generate(ctx, q)
-			if err != nil {
-				panic(err)
-			}
-
 		}
 	}()
 
 	select {}
 }
 
-func AskDocHub(q string, output chan<- string) {
+func AskAi(q string, answer chan<- common.Answer) {
+	lc, err := llm.NewLLM()
+	if err != nil {
+		panic(err)
+	}
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*100)
+	defer cancel()
+
+	_, err = lc.StreamGenerate(ctx, q, answer)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = lc.Generate(ctx, q)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func AskDocHub(q string, answer chan<- common.Answer) {
 	llm, err := openai.New()
 	if err != nil {
 		log.Fatal(err)
@@ -98,6 +110,10 @@ func AskDocHub(q string, output chan<- string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	output <- result
+	sb := strings.Builder{}
+	sb.Write([]byte(result))
+	answer <- common.Answer{
+		Chunk: sb,
+		Over:  true,
+	}
 }

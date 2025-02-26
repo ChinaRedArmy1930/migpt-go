@@ -4,7 +4,7 @@ LLM:
   embedding_model: "BAAI/bge-large-zh-v1.5"
 
 Ai:
-  wake_up_key_words: ["召唤AI", "使用AI", "使用deepseek"]
+  wake_up_key_words: ["召唤AI", "使用AI", "使用deepseek", "今天是什么日子"]
 
 Qdrant:
   url: http://9.134.91.245:6334
