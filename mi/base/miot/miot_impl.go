@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -283,15 +284,21 @@ func (m *MiotAccount) setProperty(ctx context.Context, device_id string, siid, p
 	})
 }
 
-func (m *MiotAccount) action(ctx context.Context, args ...interface{}) (string, error) {
+func (m *MiotAccount) action(ctx context.Context, args ...any) (string, error) {
 	device_id := args[0].(string)
-	siid := args[1].(int64)
-	aiid := args[1].([]any)
+	for _, x := range args {
+		switch x.(type) {
+		case int, int64, uint, int8, int32, string:
+		default:
+			return "", fmt.Errorf("get args failed, got %v", reflect.TypeOf(x))
+		}
+	}
+
 	t, err := m.miotSpecControl(ctx, device_id, "action", map[string]any{
 		"did":  device_id,
-		"siid": siid,
-		"aiid": aiid,
-		"in":   args,
+		"siid": args[1],
+		"aiid": args[2],
+		"in":   args[2:],
 	})
 
 	return string(t), err

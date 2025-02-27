@@ -39,7 +39,7 @@ func (k *KnowledgeHub) Load() error {
 }
 
 func loadDocument(ctx context.Context, path string) error {
-	u, err := url.Parse(config.DefaultConfig.Ai.Qdrant.Url)
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
 	if err != nil {
 		return err
 	}

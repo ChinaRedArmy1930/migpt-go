@@ -55,6 +55,7 @@ const (
 
 	//referance: https://miot-spec.org/miot-spec-v2/spec/services
 	IntelligentSpeakerService = "urn:miot-spec-v2:service:intelligent-speaker:0000789B"
+	PlayControlService        = "urn:miot-spec-v2:service:play-control:0000781D"
 
 	//referance: https://miot-spec.org/miot-spec-v2/spec/properties
 	TextContentProperty = "urn:miot-spec-v2:property:text-content:000000FA"
@@ -67,8 +68,8 @@ const (
 	PlayMusicAction            = "urn:miot-spec-v2:action:play-music:00002846"
 	ExecuteTextDirectiveAction = "urn:miot-spec-v2:action:execute-text-directive:00002842"
 
-	WakeUpWord   = "action:wake-up"
-	PlayTextWord = "action:play-text"
-	PauseWord    = "action:pause"
-	PlayingWord  = "property:playing-state"
+	WakeUpWord   = "Wake Up"
+	PlayTextWord = "Play Text"
+	PauseWord    = "Pause"
+	PlayingWord  = "Playing State"
 )

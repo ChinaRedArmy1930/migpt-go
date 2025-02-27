@@ -10,6 +10,7 @@ import (
 	"migpt-go/mi/fsm"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -82,18 +83,22 @@ func AskAi(q string, answer chan<- common.Answer) {
 }
 
 func AskDocHub(q string, answer chan<- common.Answer) {
-	llm, err := openai.New()
+	llm, err := openai.New(
+		openai.WithBaseURL(config.DefaultConfig.LLM.BaseUrl),
+		openai.WithToken(os.Getenv("apikey")))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	u, err := url.Parse(config.DefaultConfig.Ai.Qdrant.Url)
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	qd, err := qdrant.New(
 		qdrant.WithURL(*u),
+		qdrant.WithCollectionName((&qdrant_store.KnowledgeHub{}).CollectionName()),
+		//qdrant.WithEmbedder(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -111,6 +116,7 @@ func AskDocHub(q string, answer chan<- common.Answer) {
 		log.Fatal(err)
 	}
 	sb := strings.Builder{}
+	internal.GetLogger().Infof(context.TODO(), "get dochub ans %s", result)
 	sb.Write([]byte(result))
 	answer <- common.Answer{
 		Chunk: sb,

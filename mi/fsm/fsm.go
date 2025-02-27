@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/looplab/fsm"
@@ -200,40 +199,38 @@ func (x *XiaoAiFSM) enterIdle() {
 			device_spec := spec.GetDeviceSpecCommmond(device_type)
 
 			//找到智能音响service的指令
-			for _, v := range device_spec.Services {
-				if strings.Contains(v.Type, common.IntelligentSpeakerService) {
-					siid := v.IID
-					piid := -1
-					for _, property := range v.Properties {
-						switch {
-						case strings.Contains(property.Type, common.TextContentProperty):
-							{
-								piid = property.IID
-								x.actCommand[tdid(device.Did)][common.PlayingWord] = act{
-									piid: piid,
-									siid: siid,
-								}
-								break
-							}
-						}
+			for _, service := range device_spec.Services {
+				serviceID := service.IID
+				did := tdid(device.Did)
+
+				// 初始化内层 map
+				if x.actCommand[did] == nil {
+					x.actCommand[did] = make(map[tkeyword]act)
+				}
+
+				// 构建一个属性映射表，方便查找 piid
+				propertyMap := make(map[int]int) // in 参数值 -> 属性 iid
+				for _, property := range service.Properties {
+					propertyMap[property.IID] = property.IID
+				}
+
+				for _, action := range service.Actions {
+					actionDescription := tkeyword(action.Description)
+					actionID := action.IID
+
+					// 初始化 act
+					a := act{
+						aiid: actionID,
+						siid: serviceID,
 					}
 
-					for _, action := range v.Actions {
-						switch {
-						case strings.Contains(action.Type, common.WakeUpAction):
-							tmpAct := x.actCommand[tdid(device.Did)][tkeyword(common.WakeUpWord)]
-							tmpAct.aiid = action.IID
-							x.actCommand[tdid(device.Did)][tkeyword(common.WakeUpWord)] = tmpAct
-						case strings.Contains(action.Type, common.PlayTextAction):
-							tmpAct := x.actCommand[tdid(device.Did)][tkeyword(common.PlayTextWord)]
-							tmpAct.aiid = action.IID
-							x.actCommand[tdid(device.Did)][tkeyword(common.WakeUpWord)] = tmpAct
-						case strings.Contains(action.Type, common.PauseAction):
-							tmpAct := x.actCommand[tdid(device.Did)][tkeyword(common.PlayTextWord)]
-							tmpAct.aiid = action.IID
-							x.actCommand[tdid(device.Did)][tkeyword(common.WakeUpWord)] = tmpAct
-						}
+					// 如果有输入参数，取第一个作为 piid
+					if len(action.In) > 0 {
+						a.piid = action.In[0]
 					}
+
+					// 添加到 map
+					x.actCommand[did][actionDescription] = a
 				}
 			}
 		}
@@ -298,7 +295,7 @@ func (x *XiaoAiFSM) onEnterListening() {
 					x.mina.Controller(x.ctx, "play", "退出AI模式", "", device_id)
 				})
 				//检测到AI后,让音响静音
-				r, err := x.miot.Controller(x.ctx, "action", device_id,
+				r, err := x.miot.Controller(x.ctx, "action", did,
 					x.actCommand[tdid(did.(string))][common.PauseWord].siid,
 					x.actCommand[tdid(did.(string))][common.PauseWord].aiid,
 				)
