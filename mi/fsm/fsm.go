@@ -84,12 +84,13 @@ func NewXiaoAi(question chan<- string, answer <-chan common.Answer) *XiaoAiFSM {
 		ConversationHeap: make([]*mina.Record, 0),
 		actCommand:       make(map[tdid]map[tkeyword]act),
 	}
-	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Grpc)
 	if err != nil {
 		log.Fatal(err)
 	}
 	port, _ := strconv.Atoi(u.Port())
-	//sudo docker run -d  -p 6334:6334   qdrant/qdrant
+	//sudo docker run -d  -p 6334:6334  -p 6333:6333  qdrant/qdrant
 	client, err := qdrant.NewClient(&qdrant.Config{
 		Host:                   u.Hostname(),
 		Port:                   port,

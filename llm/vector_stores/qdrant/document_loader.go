@@ -3,7 +3,10 @@ package qdrant_store
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"migpt-go/config"
+	internal "migpt-go/internal/log"
 	"migpt-go/llm/vector_stores"
 	"net/http"
 	"net/url"
@@ -11,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/tmc/langchaingo/documentloaders"
+	"github.com/tmc/langchaingo/embeddings"
+	"github.com/tmc/langchaingo/llms/openai"
 	"github.com/tmc/langchaingo/textsplitter"
 	"github.com/tmc/langchaingo/vectorstores/qdrant"
 )
@@ -39,13 +44,29 @@ func (k *KnowledgeHub) Load() error {
 }
 
 func loadDocument(ctx context.Context, path string) error {
-	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+	llm, err := openai.New(
+		openai.WithBaseURL(config.DefaultConfig.LLM.BaseUrl),
+		openai.WithToken(os.Getenv("apikey")),
+		openai.WithEmbeddingModel(config.DefaultConfig.LLM.EmbeddingModel),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Http)
 	if err != nil {
 		return err
 	}
 
+	embed, err := embeddings.NewEmbedder(llm)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	q, err := qdrant.New(
 		qdrant.WithURL(*u),
+		qdrant.WithCollectionName(knowledgeHubCollection),
+		qdrant.WithEmbedder(embed),
 	)
 	if err != nil {
 		return err
@@ -58,16 +79,20 @@ func loadDocument(ctx context.Context, path string) error {
 		},
 	}
 
-	url, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+	u = u.JoinPath("collections", knowledgeHubCollection)
+	body, status, err := qdrant.DoRequest(context.TODO(), *u, "", http.MethodPut, collectionConfig)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
-	url = url.JoinPath("collections", knowledgeHubCollection)
-	_, _, err = qdrant.DoRequest(context.TODO(), *url, "", http.MethodPut, collectionConfig)
+	resp, err := io.ReadAll(body)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
+
+	internal.GetLogger().Debugf(ctx, "put collection get response %s, status %d", resp, status)
+
+	defer body.Close()
 
 	dirs, err := os.ReadDir(path)
 	if err != nil {

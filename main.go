@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"migpt-go/config"
 	"migpt-go/internal/common"
@@ -20,6 +21,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/tmc/langchaingo/chains"
+	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms/openai"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/vectorstores"
@@ -38,7 +40,9 @@ func main() {
 
 	//load所有数据到数据库
 	for _, v := range []vector_stores.VectorStore{&qdrant_store.KnowledgeHub{}, &qdrant_store.WakeUp{}} {
-		v.Load()
+		if err := v.Load(); err != nil {
+			log.Fatal(fmt.Errorf("load %s error => %s", v.CollectionName(), err))
+		}
 	}
 
 	question := make(chan string)
@@ -85,12 +89,20 @@ func AskAi(q string, answer chan<- common.Answer) {
 func AskDocHub(q string, answer chan<- common.Answer) {
 	llm, err := openai.New(
 		openai.WithBaseURL(config.DefaultConfig.LLM.BaseUrl),
-		openai.WithToken(os.Getenv("apikey")))
+		openai.WithToken(os.Getenv("apikey")),
+		openai.WithEmbeddingModel(config.DefaultConfig.LLM.EmbeddingModel),
+		openai.WithModel(config.DefaultConfig.LLM.),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Http)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	embed, err := embeddings.NewEmbedder(llm)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -98,25 +110,26 @@ func AskDocHub(q string, answer chan<- common.Answer) {
 	qd, err := qdrant.New(
 		qdrant.WithURL(*u),
 		qdrant.WithCollectionName((&qdrant_store.KnowledgeHub{}).CollectionName()),
-		//qdrant.WithEmbedder(),
+		qdrant.WithEmbedder(embed),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	combinedStuffQAChain := chains.LoadStuffQA(llm)
-	combinedQuestionGeneratorChain := chains.LoadCondenseQuestionGenerator(llm)
-
-	retriever := vectorstores.ToRetriever(qd, 1)
-
-	retrieverQaChain := chains.NewConversationalRetrievalQA(combinedStuffQAChain, combinedQuestionGeneratorChain, retriever, memory.NewConversationBuffer())
+	retrieverQaChain := chains.NewConversationalRetrievalQA(
+		chains.LoadStuffQA(llm),
+		chains.LoadCondenseQuestionGenerator(llm),
+		vectorstores.ToRetriever(qd, 1),
+		memory.NewConversationBuffer())
 
 	result, err := chains.Run(context.TODO(), retrieverQaChain, q)
 	if err != nil {
 		log.Fatal(err)
 	}
-	sb := strings.Builder{}
+
 	internal.GetLogger().Infof(context.TODO(), "get dochub ans %s", result)
+	
+	sb := strings.Builder{}
 	sb.Write([]byte(result))
 	answer <- common.Answer{
 		Chunk: sb,

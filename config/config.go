@@ -26,7 +26,8 @@ type AiConfig struct {
 }
 
 type QdrantConfig struct {
-	Url string `mapstructure:"Url"`
+	Http string `mapstructure:"http"`
+	Grpc string `mapstructure:"grpc"`
 }
 
 type Config struct {

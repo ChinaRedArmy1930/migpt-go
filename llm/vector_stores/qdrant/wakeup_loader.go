@@ -37,7 +37,7 @@ func (w *WakeUp) CollectionName() string {
 // Load implements vector_stores.VectorStore.
 func (w *WakeUp) Load() error {
 	ctx := context.TODO()
-	u, err := url.Parse(config.DefaultConfig.Qdrant.Url)
+	u, err := url.Parse(config.DefaultConfig.Qdrant.Grpc)
 	if err != nil {
 		return err
 	}
